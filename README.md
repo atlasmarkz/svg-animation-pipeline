@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="./assets/icon-180.png" width="88" height="88" alt="SVG Motion logo" />
+</p>
+
 # SVG Animation Pipeline
 
 端到端 SVG 动画流水线：**自然语言描述 → LLM 生成 SVG → 程序化动画 → 按帧渲染 → FFmpeg 合成**
 
-同一份 SVG 每次渲染得到相同帧，原生 CSS/SMIL 动画会被精确 seek 到帧时间，因此可以稳定输出**循环无缝、可复现**的 GIF/MP4/WebM。
+同一份 SVG 每次渲染得到相同帧，原生 CSS/SMIL 动画会被精确 seek 到帧时间，因此可以稳定输出**循环无缝、可复现**的 GIF/MP4/WebM。本仓库同时提供 DeepSeek Harness 插件 **SVG Motion**。
 
 <p align="center">
   <img src="./output/agent-loop.gif" width="960" alt="The Agent Loop — 8 秒无缝循环的 SVG 动画" />
@@ -29,6 +33,7 @@
 ## 核心特性
 
 - **LLM 智能生成**：支持 OpenAI/Anthropic API，自然语言描述自动生成 SVG 动画
+- **DSH 插件**：注册 `svg_motion_render` 工具，Agent 在对话里直接产出 GIF/MP4/WebM，输入输出跟随会话工作目录
 - **确定性逐帧渲染**：CSS 动画与 SMIL 统一暂停并 seek 到帧时间，同一输入重复渲染结果一致
 - **原生动画保留**：`preserveNativeAnimations: true` 时保留 `@keyframes`、SMIL 动画，并逐帧同步两条时间轴
 - **正确属性通道**：presentation 属性走 kebab-case 内联样式，避免被 class CSS 覆盖；变换会与作者 transform 组合
@@ -156,15 +161,18 @@ console.log('Animations:', result.animations);
 
 ## DeepSeek Harness 插件
 
-本仓库同时是一个可安装的 **DSH 插件**。它把渲染流水线注册为 `svg_motion_render` 工具，让 DSH 里的 Agent 直接生成 GIF / MP4 / WebM，而不是只输出一段 SVG 代码。
+本仓库同时是一个可安装的 **DSH 插件**，名字是 **SVG Motion**。它把渲染流水线注册为 `svg_motion_render` 工具，让 DSH 里的 Agent 直接生成 GIF / MP4 / WebM，而不是只输出一段 SVG 代码。
+
+插件是 host-only 的：不修改 Web UI，不额外启动服务。安装后重启 DSH，工具会出现在 Agent 的工具列表中。
 
 ### 安装
 
-```bash
-dsh plugin --profile web add https://github.com/atlasmarkz/svg-animation-pipeline/releases/latest/download/svg-animation-pipeline-1.1.2.tgz
-```
+要求 **DSH >= 0.2.2-rc.1**、Node.js 18+，以及可用的 Chrome/Chromium；FFmpeg 已随包提供。
 
-安装后重启 DSH。插件是 host-only 的，不修改 Web UI；工具会出现在 Agent 的工具列表中。
+```bash
+dsh plugin --profile web add \
+  https://github.com/atlasmarkz/svg-animation-pipeline/releases/download/v1.1.2/svg-animation-pipeline-1.1.2.tgz
+```
 
 ### 工具调用
 
@@ -180,9 +188,51 @@ dsh plugin --profile web add https://github.com/atlasmarkz/svg-animation-pipelin
 }
 ```
 
-也可以传 `input: "assets/loop.svg"` 读取文件，或用 `animations` 传入关键帧数组。`output` 支持 `.gif`、`.mp4`、`.webm`；相对路径按工作目录解析。Chrome 会优先使用 `chromePath` / `PUPPETEER_EXECUTABLE_PATH` / 系统安装的 Chrome，FFmpeg 使用项目自带的静态二进制。
+也可以传 `input: "assets/loop.svg"` 读取文件，或用 `animations` 传入关键帧数组：
 
-工具返回输出路径、尺寸、帧数、耗时和文件大小；渲染过程仍然使用逐帧 seek 和确定性帧序列，所以同一个 SVG 每次得到相同结果。
+```json
+{
+  "input": "assets/card.svg",
+  "output": "output/card.mp4",
+  "fps": 30,
+  "duration": 1800,
+  "animations": [
+    {
+      "targets": "#card",
+      "keyframes": [
+        { "time": 0, "properties": { "opacity": 0, "transform": { "translate": [0, 12] } } },
+        { "time": 600, "properties": { "opacity": 1, "transform": { "translate": [0, 0] } }, "easing": "easeOutCubic" }
+      ]
+    }
+  ]
+}
+```
+
+`output` 支持 `.gif`、`.mp4`、`.webm`；相对路径按**当前 DSH 会话工作目录**解析，输入文件也通过会话文件系统读取。Chrome 会优先使用 `chromePath` / `PUPPETEER_EXECUTABLE_PATH` / 系统安装的 Chrome。
+
+### 参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `svg` | string | — | 内联 SVG，与 `input` 二选一 |
+| `input` | string | — | `.svg` 文件路径，与 `svg` 二选一 |
+| `output` | string | 必填 | 输出路径，扩展名决定格式 |
+| `width` / `height` | number | SVG 尺寸 | 输出画布尺寸，16–4096 |
+| `fps` | number | 25 | 1–60 |
+| `duration` | number | 4000 | 动画时长，100–60000 ms |
+| `background` | string | `#ffffff` | 背景色 |
+| `quality` | `low` \| `medium` \| `high` | `medium` | 只影响 MP4/WebM 编码 |
+| `pixelRatio` | number | 1 | 0.25–4；`2` 输出 2× 尺寸 |
+| `preserveNativeAnimations` | boolean | true | 保留并逐帧 seek CSS/SMIL |
+| `animations` | AnimationConfig[] | — | 关键帧动画，格式见上 |
+| `chromePath` | string | 自动检测 | Chrome/Chromium 可执行文件 |
+| `keepFrames` | boolean | false | 保留 PNG 帧，便于调试 |
+
+单次渲染限制：最多 1200 帧、捕获像素不超过 2400 万。工具返回输出路径、尺寸、帧数、耗时和文件大小。
+
+### 市场
+
+插件条目已提交到 DSH 社区市场索引 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（[PR #14692](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/14692)）。合并后可以直接在 dsh-market 搜索 **SVG Motion**；在那之前，用上面的 Release tarball 安装即可。
 
 ## 支持的样式
 
@@ -424,6 +474,12 @@ svg-animation-pipeline/
 │       ├── App.tsx               # 主应用
 │       └── components/           # React 组件
 ├── examples/                     # 示例文件
+├── plugin/                       # DSH 插件
+│   ├── src/index.ts              # svg_motion_render 工具实现
+│   ├── package.json              # ESM 包标记
+│   └── dist/                     # 插件构建产物
+├── assets/                       # 插件 Logo（SVG + PNG）
+├── cordis.patch.yml              # DSH 插件挂载声明
 ├── docs/                         # 效果对比等文档图片
 └── output/                       # 输出目录
 ```
