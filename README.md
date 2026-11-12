@@ -161,7 +161,7 @@ console.log('Animations:', result.animations);
 ### 安装
 
 ```bash
-dsh plugin --profile web add https://github.com/atlasmarkz/svg-animation-pipeline/releases/latest/download/svg-animation-pipeline-1.1.1.tgz
+dsh plugin --profile web add https://github.com/atlasmarkz/svg-animation-pipeline/releases/latest/download/svg-animation-pipeline-1.1.2.tgz
 ```
 
 安装后重启 DSH。插件是 host-only 的，不修改 Web UI；工具会出现在 Agent 的工具列表中。
