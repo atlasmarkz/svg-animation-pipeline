@@ -135,8 +135,8 @@ const svgContent = `
     .stage-card { animation: cardLift 8s cubic-bezier(.4, 0, .2, 1) infinite; }
     @keyframes cardLift {
       0%   { transform: translateY(-4px); }
-      30%  { transform: translateY(-4px); }
-      38%  { transform: translateY(0); }
+      24%  { transform: translateY(-4px); }
+      32%  { transform: translateY(0); }
       90%  { transform: translateY(0); }
       100% { transform: translateY(-4px); }
     }
@@ -149,32 +149,32 @@ const svgContent = `
     .g3 { animation-delay: -2.6667s; }
     @keyframes stageGlow {
       0%   { opacity: 0.96; }
-      30%  { opacity: 0.96; }
-      38%  { opacity: 0.16; }
+      24%  { opacity: 0.96; }
+      32%  { opacity: 0.16; }
       90%  { opacity: 0.12; }
       100% { opacity: 0.96; }
     }
     .stage-wash { animation: stageWash 8s ease-in-out infinite; }
     @keyframes stageWash {
       0%   { opacity: 0.07; }
-      30%  { opacity: 0.07; }
-      38%  { opacity: 0; }
+      24%  { opacity: 0.07; }
+      32%  { opacity: 0; }
       90%  { opacity: 0; }
       100% { opacity: 0.07; }
     }
     .halo { animation: haloPulse 8s ease-in-out infinite; }
     @keyframes haloPulse {
       0%   { opacity: 0.70; }
-      30%  { opacity: 0.70; }
-      38%  { opacity: 0.16; }
+      24%  { opacity: 0.70; }
+      32%  { opacity: 0.16; }
       90%  { opacity: 0.12; }
       100% { opacity: 0.70; }
     }
     .icon-bob { animation: iconBob 8s cubic-bezier(.4, 0, .2, 1) infinite; }
     @keyframes iconBob {
       0%   { transform: translateY(-3px); }
-      30%  { transform: translateY(-3px); }
-      38%  { transform: translateY(0); }
+      24%  { transform: translateY(-3px); }
+      32%  { transform: translateY(0); }
       90%  { transform: translateY(0); }
       100% { transform: translateY(-3px); }
     }
