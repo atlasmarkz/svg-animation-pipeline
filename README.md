@@ -12,7 +12,7 @@
   <img src="./output/agent-loop.gif" width="960" alt="The Agent Loop — 8 秒无缝循环的 SVG 动画" />
 </p>
 <p align="center">
-  <sub>1280×800 · 25 FPS · 8s seamless loop · 200 frames · <a href="./output/agent-loop.mp4">MP4 版（569 KB）</a> · <a href="./examples/agent-loop.ts">源码</a></sub>
+  <sub>1280×800 · 25 FPS · 8s 无缝循环 · 200 帧 · GIF 2.6 MB · <a href="./output/agent-loop.mp4">MP4 版（358 KB）</a> · <a href="./examples/agent-loop.ts">源码</a></sub>
 </p>
 
 ## 核心特性
@@ -426,7 +426,7 @@ npx ts-node examples/basic-path.ts
 npx ts-node examples/morph-demo.ts
 ```
 
-`agent-loop.ts` 是“效果优先”的完整示例：1280×800 画布、25fps、8 秒周期，所有 CSS/SMIL 周期都整除 8 秒；输出约 8.4 MB GIF 或 569 KB MP4。
+`agent-loop.ts` 是“效果优先”的白底完整示例：1280×800 画布、25fps、8 秒周期，所有 CSS/SMIL 周期都整除 8 秒；输出约 2.6 MB GIF 或 358 KB MP4。
 
 ## 项目结构
 
