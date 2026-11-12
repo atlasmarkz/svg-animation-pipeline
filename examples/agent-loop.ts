@@ -1,501 +1,463 @@
 /**
- * Agent Loop Mechanism — Ultimate Premium PPT Style
+ * Example: "The Agent Loop" — a cinematic, seamlessly looping hero diagram.
  *
- * Final refinements for maximum visual appeal:
- * - Perfect spacing and alignment
- * - Elegant icon designs with consistent stroke weights
- * - Harmonious pastel color palette
- * - Smooth, professional arrow paths
- * - Clear typography hierarchy
- * - Balanced visual composition
+ * Design goals:
+ *  - Legible at README width (1280x800 at 25fps, 8s loop)
+ *  - Dark "aurora glass" visual language: deep navy, glass cards, three accents
+ *  - Every animation is periodic over 8s so the GIF loops without a seam
+ *
+ * All motion is native CSS/SMIL. The pipeline seeks both timelines to exact
+ * frame times, so output is deterministic instead of wall-clock dependent.
  */
 
 import { SVGAnimationPipeline } from '../src/pipeline';
 import { ProgressInfo } from '../src/types';
 
 const svgContent = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1050" width="1600" height="1050">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800">
   <defs>
-    <style>
-      /* ── Flow animations ── */
-      @keyframes dashFlow {
-        to { stroke-dashoffset: -24; }
-      }
-      @keyframes dashCycle {
-        to { stroke-dashoffset: -22; }
-      }
-      .flow-line  { animation: dashFlow 10s linear infinite; }
-      .cycle-line { animation: dashCycle 14s linear infinite; }
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070B14"/>
+      <stop offset="0.55" stop-color="#080D18"/>
+      <stop offset="1" stop-color="#05070E"/>
+    </linearGradient>
 
-      /* ── Breathing ── */
-      @keyframes breathe {
-        0%, 100% { opacity: 1; }
-        50%       { opacity: 0.90; }
-      }
-      @keyframes breatheSlow {
-        0%, 100% { opacity: 0.96; }
-        50%       { opacity: 0.78; }
-      }
-      .breathe      { animation: breathe      14s ease-in-out infinite; }
-      .breathe-slow { animation: breatheSlow 20s ease-in-out infinite; }
+    <radialGradient id="auroraViolet" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#7C3AED" stop-opacity="0.30"/>
+      <stop offset="0.45" stop-color="#6D28D9" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#6D28D9" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraEmerald" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#10B981" stop-opacity="0.20"/>
+      <stop offset="0.5" stop-color="#059669" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#059669" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraRose" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#F43F5E" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#BE123C" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#BE123C" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraBlue" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#3B82F6" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#3B82F6" stop-opacity="0"/>
+    </radialGradient>
 
-      /* ── Safety flash ── */
-      @keyframes flashA {
-        0%, 100% { fill: #fff; stroke-width: 1.3; }
-        50%       { fill: #fff5f5; stroke-width: 2; }
-      }
-      @keyframes flashB {
-        0%, 100% { fill: #fff; stroke-width: 1.3; }
-        50%       { fill: #fff7ed; stroke-width: 2; }
-      }
-      @keyframes flashC {
-        0%, 100% { fill: #fff; stroke-width: 1.3; }
-        50%       { fill: #fefce8; stroke-width: 2; }
-      }
-      @keyframes flashD {
-        0%, 100% { fill: #fff; stroke-width: 1.3; }
-        50%       { fill: #f0fdf4; stroke-width: 2; }
-      }
-      @keyframes rejectPulse {
-        0%, 100% { opacity: 0.7; }
-        50%       { opacity: 1; }
-      }
-      .flash-a { animation: flashA 12s ease-in-out infinite; }
-      .flash-b { animation: flashB 12s ease-in-out infinite 3s; }
-      .flash-c { animation: flashC 12s ease-in-out infinite 6s; }
-      .flash-d { animation: flashD 12s ease-in-out infinite 9s; }
-      .reject-pulse { animation: rejectPulse 10s ease-in-out infinite; }
+    <linearGradient id="cardFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.062"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.030"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.012"/>
+    </linearGradient>
 
-      /* ── Shimmer ── */
-      @keyframes shimmer {
-        0%, 100% { opacity: 0.35; }
-        50%       { opacity: 1; }
-      }
-      .shimmer { animation: shimmer 12s ease-in-out infinite; }
+    <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.7" stop-color="#E0E7FF"/>
+      <stop offset="1" stop-color="#A5B4FC"/>
+    </linearGradient>
 
-      /* ── Send pulse ── */
-      @keyframes sendPulse {
-        0%, 100% { opacity: 0.65; transform: translateX(0); }
-        50%       { opacity: 1;    transform: translateX(4px); }
-      }
-      .send-pulse { animation: sendPulse 9s ease-in-out infinite; transform-origin: center; }
+    <linearGradient id="violetGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6EE7B7"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="roseGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FDA4AF"/>
+      <stop offset="1" stop-color="#F43F5E"/>
+    </linearGradient>
 
-      /* ── Diamond bounce ── */
-      @keyframes diamondBounce {
-        0%, 100% { transform: scale(1); }
-        30%       { transform: scale(1.07); }
-        60%       { transform: scale(0.96); }
-      }
-      .diamond-bounce { animation: diamondBounce 14s ease-in-out infinite; transform-origin: 760px 520px; }
+    <linearGradient id="flowViolet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8B5CF6" stop-opacity="0.15"/>
+      <stop offset="0.5" stop-color="#A78BFA" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#34D399" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="flowEmerald" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34D399" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#6EE7B7" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#FB7185" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="railGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8B5CF6" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#64748B" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#FB7185" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="divider" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.12" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.07"/>
+      <stop offset="0.88" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
 
-      /* ── Tool pulse ── */
-      @keyframes toolPulse {
-        0%, 100% { opacity: 0.88; }
-        50%       { opacity: 1; }
-      }
-      .tool-pulse { animation: toolPulse 14s ease-in-out infinite; }
-    </style>
+    <radialGradient id="iconViolet" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8B5CF6" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0.03"/>
+    </radialGradient>
+    <radialGradient id="iconEmerald" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#10B981" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#10B981" stop-opacity="0.03"/>
+    </radialGradient>
+    <radialGradient id="iconRose" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#F43F5E" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#F43F5E" stop-opacity="0.03"/>
+    </radialGradient>
 
-    <!-- Arrow markers -->
-    <marker id="arr"     viewBox="0 0 10 8" markerWidth="8" markerHeight="6" refX="8" refY="4" orient="auto">
-      <polygon points="0 1, 10 4, 0 7" fill="#64748b"/>
-    </marker>
-    <marker id="arrLt"   viewBox="0 0 10 8" markerWidth="6" markerHeight="5" refX="8" refY="4" orient="auto">
-      <polygon points="0 1, 10 4, 0 7" fill="#94a3b8"/>
-    </marker>
-    <marker id="arrGrn"  viewBox="0 0 10 8" markerWidth="8" markerHeight="6" refX="8" refY="4" orient="auto">
-      <polygon points="0 1, 10 4, 0 7" fill="#22c55e"/>
-    </marker>
-    <marker id="arrRed"  viewBox="0 0 10 8" markerWidth="8" markerHeight="6" refX="8" refY="4" orient="auto">
-      <polygon points="0 1, 10 4, 0 7" fill="#ef4444"/>
-    </marker>
+    <pattern id="dotGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1.4" cy="1.4" r="1.15" fill="#FFFFFF" opacity="0.045"/>
+    </pattern>
   </defs>
 
-  <!-- ── Background ── -->
-  <rect width="1600" height="1050" fill="#fafbfc"/>
+  <style>
+    text {
+      font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      text-rendering: geometricPrecision;
+    }
+    .mono {
+      font-family: 'SF Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+    }
+    .stage-glow { animation: stageGlow 8s ease-in-out infinite; }
+    .g1 { animation-delay: 0s; }
+    .g2 { animation-delay: -5.3333s; }
+    .g3 { animation-delay: -2.6667s; }
+    @keyframes stageGlow {
+      0%   { opacity: 0.92; }
+      16%  { opacity: 0.16; }
+      82%  { opacity: 0.10; }
+      100% { opacity: 0.92; }
+    }
+    .halo { animation: haloPulse 8s ease-in-out infinite; }
+    @keyframes haloPulse {
+      0%   { opacity: 0.55; }
+      16%  { opacity: 0.12; }
+      82%  { opacity: 0.10; }
+      100% { opacity: 0.55; }
+    }
+    .flow { stroke-dasharray: 4 10; animation: dashFlow 1.6s linear infinite; }
+    @keyframes dashFlow { to { stroke-dashoffset: -56; } }
+    .signal { animation: signalPulse 2s ease-in-out infinite; }
+    @keyframes signalPulse {
+      0%, 100% { opacity: 0.24; }
+      50%      { opacity: 1; }
+    }
+    .s0 { animation-delay: -0.10s; }
+    .s1 { animation-delay: -0.30s; }
+    .s2 { animation-delay: -0.50s; }
+    .s3 { animation-delay: -0.70s; }
+    .s4 { animation-delay: -0.90s; }
+    .s5 { animation-delay: -1.10s; }
+    .s6 { animation-delay: -1.30s; }
+    .s7 { animation-delay: -1.50s; }
+    .s8 { animation-delay: -1.70s; }
+    .aurora { animation: auroraBreathe 8s ease-in-out infinite; }
+    @keyframes auroraBreathe {
+      0%, 100% { opacity: 0.72; }
+      50%      { opacity: 1; }
+    }
+    .status-dot { animation: statusPulse 2s ease-in-out infinite; }
+    @keyframes statusPulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.35; }
+    }
+  </style>
 
-  <!-- ══════════════════════════════════════════════════════════ -->
-  <!-- SECTION 1: TRIGGER / INPUT                               -->
-  <!-- ══════════════════════════════════════════════════════════ -->
-  <g id="trigger-section" class="breathe-slow">
-    <rect x="180" y="32" width="1240" height="92" rx="16" fill="#f0e8ff" stroke="#d0b8f0" stroke-width="1.2"/>
-    <text x="210" y="62" fill="#4a3070" font-family="system-ui,sans-serif" font-size="15" font-weight="600" letter-spacing="0.3">Trigger / Input</text>
+  <!-- Background -->
+  <rect width="1280" height="800" fill="url(#bg)"/>
+  <g class="aurora">
+    <ellipse cx="210" cy="130" rx="500" ry="320" fill="url(#auroraViolet)"/>
+    <ellipse cx="1110" cy="250" rx="430" ry="300" fill="url(#auroraEmerald)"/>
+    <ellipse cx="820" cy="790" rx="560" ry="280" fill="url(#auroraRose)"/>
+    <ellipse cx="640" cy="420" rx="460" ry="300" fill="url(#auroraBlue)"/>
+  </g>
+  <rect width="1280" height="800" fill="url(#dotGrid)"/>
 
-    <!-- 4 trigger icons — evenly spaced -->
-    <!-- Message -->
-    <g id="trigger-message">
-      <rect x="220" y="72" width="230" height="38" rx="10" fill="#fff" stroke="#e8d8f8" stroke-width="1"/>
-      <path d="M 242 83 h 13 a 2.5 2.5 0 0 1 2.5 2.5 v 7 a 2.5 2.5 0 0 1 -2.5 2.5 h -8 l -4 4 v -4 h -1.5 a 2.5 2.5 0 0 1 -2.5 -2.5 v -7 a 2.5 2.5 0 0 1 2.5 -2.5 z"
-            fill="none" stroke="#9b7fc4" stroke-width="1.5"/>
-      <line x1="248" y1="88" x2="253" y2="88" stroke="#b8a0d8" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="248" y1="92" x2="251" y2="92" stroke="#b8a0d8" stroke-width="1.5" stroke-linecap="round"/>
-      <text x="265" y="96" fill="#5a4070" font-family="system-ui,sans-serif" font-size="12">消息输入</text>
+  <!-- Framing marks -->
+  <g stroke="#8FA3BF" stroke-opacity="0.22" stroke-width="1" fill="none">
+    <path d="M40 54 V40 H54"/>
+    <path d="M1226 40 H1240 V54"/>
+    <path d="M40 746 V760 H54"/>
+    <path d="M1226 760 H1240 V746"/>
+  </g>
+  <path d="M64 196 H1216" stroke="url(#divider)" stroke-width="1"/>
+
+  <!-- Header -->
+  <g>
+    <rect x="64" y="54" width="26" height="26" rx="8" fill="url(#violetGrad)" opacity="0.92"/>
+    <path d="M77 59.5 L79 69 L88.5 71 L79 73 L77 82.5 L75 73 L65.5 71 L75 69 Z" fill="#F8FAFC" opacity="0.95"/>
+    <text x="102" y="72" class="mono" font-size="10.5" letter-spacing="2.6" fill="#7C8BA1">ATLAS / AGENT SYSTEMS</text>
+
+    <text x="64" y="138" font-size="47" font-weight="600" letter-spacing="-1.5" fill="url(#titleGrad)">The Agent Loop</text>
+    <text x="64" y="171" font-size="16.5" letter-spacing="0.1" fill="#94A3B8">A reasoning system that thinks, acts, and learns — one turn at a time.</text>
+
+    <g>
+      <rect x="982" y="54" width="234" height="36" rx="18" fill="#0B1220" fill-opacity="0.62" stroke="#94A3B8" stroke-opacity="0.16"/>
+      <circle cx="1002" cy="72" r="4" fill="#34D399"/>
+      <circle cx="1002" cy="72" r="7.5" fill="none" stroke="#34D399" stroke-opacity="0.32"/>
+      <text x="1018" y="76" class="mono" font-size="10.5" letter-spacing="1.9" fill="#A7F3D0">AUTONOMOUS RUN</text>
     </g>
-
-    <!-- Calendar -->
-    <g id="trigger-event">
-      <rect x="470" y="72" width="230" height="38" rx="10" fill="#fff" stroke="#e8d8f8" stroke-width="1"/>
-      <rect x="490" y="81" width="17" height="15" rx="3" fill="none" stroke="#9b7fc4" stroke-width="1.5"/>
-      <line x1="490" y1="87" x2="507" y2="87" stroke="#9b7fc4" stroke-width="1.5"/>
-      <line x1="495" y1="79" x2="495" y2="83" stroke="#9b7fc4" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="503" y1="79" x2="503" y2="83" stroke="#9b7fc4" stroke-width="1.5" stroke-linecap="round"/>
-      <circle cx="495" cy="93" r="1.3" fill="#b8a0d8"/>
-      <circle cx="500" cy="93" r="1.3" fill="#b8a0d8"/>
-      <circle cx="505" cy="93" r="1.3" fill="#b8a0d8"/>
-      <text x="515" y="96" fill="#5a4070" font-family="system-ui,sans-serif" font-size="12">日历事件</text>
-    </g>
-
-    <!-- API -->
-    <g id="trigger-api">
-      <rect x="720" y="72" width="230" height="38" rx="10" fill="#fff" stroke="#e8d8f8" stroke-width="1"/>
-      <circle cx="742" cy="91" r="5" fill="none" stroke="#9b7fc4" stroke-width="1.5"/>
-      <circle cx="757" cy="91" r="5" fill="none" stroke="#9b7fc4" stroke-width="1.5"/>
-      <circle cx="772" cy="91" r="5" fill="none" stroke="#9b7fc4" stroke-width="1.5"/>
-      <line x1="747" y1="91" x2="752" y2="91" stroke="#b8a0d8" stroke-width="1.5"/>
-      <line x1="762" y1="91" x2="767" y2="91" stroke="#b8a0d8" stroke-width="1.5"/>
-      <text x="785" y="96" fill="#5a4070" font-family="system-ui,sans-serif" font-size="12">API 调用</text>
-    </g>
-
-    <!-- Schedule -->
-    <g id="trigger-schedule">
-      <rect x="970" y="72" width="230" height="38" rx="10" fill="#fff" stroke="#e8d8f8" stroke-width="1"/>
-      <circle cx="992" cy="91" r="8.5" fill="none" stroke="#9b7fc4" stroke-width="1.5"/>
-      <line x1="992" y1="91" x2="992" y2="85" stroke="#9b7fc4" stroke-width="1.8" stroke-linecap="round"/>
-      <line x1="992" y1="91" x2="997" y2="94" stroke="#9b7fc4" stroke-width="1.8" stroke-linecap="round"/>
-      <circle cx="992" cy="91" r="1.5" fill="#b8a0d8"/>
-      <text x="1008" y="96" fill="#5a4070" font-family="system-ui,sans-serif" font-size="12">定时调度</text>
-    </g>
+    <text x="1216" y="112" text-anchor="end" class="mono" font-size="10" letter-spacing="1.6" fill="#5C6B82">8.0 SEC · SEAMLESS LOOP</text>
   </g>
 
-  <!-- Arrow Trigger → Core -->
-  <line x1="800" y1="124" x2="800" y2="148" stroke="#64748b" stroke-width="1.8" marker-end="url(#arr)"/>
+  <!-- Orbit guide -->
+  <ellipse cx="640" cy="356" rx="592" ry="296" fill="none" stroke="#FFFFFF" stroke-opacity="0.028"/>
 
-  <!-- ══════════════════════════════════════════════════════════ -->
-  <!-- SECTION 2: COGNITIVE CORE                               -->
-  <!-- ══════════════════════════════════════════════════════════ -->
-  <g id="cognitive-core">
-    <rect x="80" y="148" width="1440" height="385" rx="20" fill="#f8f5ff" stroke="#d8cce8" stroke-width="1.2"/>
-    <text x="800" y="182" text-anchor="middle" fill="#3d2860" font-family="system-ui,sans-serif" font-size="17" font-weight="700" letter-spacing="0.3">Cognitive Core · 智能体循环</text>
+  <!-- Connectors -->
+  <g>
+    <path d="M394 350 H452" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.4"/>
+    <path d="M394 350 H452" stroke="url(#flowViolet)" stroke-width="1.6" class="flow"/>
+    <path d="M446 343 L456 350 L446 357" fill="none" stroke="#A78BFA" stroke-opacity="0.9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="423" y="332" text-anchor="middle" class="mono" font-size="8.5" letter-spacing="1.7" fill="#6D7C92">CONTEXT</text>
 
-    <!-- ── THINK ── -->
-    <g id="think-stage" class="breathe">
-      <rect x="130" y="210" width="360" height="178" rx="14" fill="#eef0ff" stroke="#c0c8f0" stroke-width="1.2"/>
-      <rect x="130" y="210" width="360" height="34" rx="14" fill="#dde0ff"/>
-      <rect x="130" y="232" width="360" height="12" fill="#dde0ff"/>
-      <text x="310" y="234" text-anchor="middle" fill="#3840b0" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Think</text>
-
-      <!-- Cloud icon -->
-      <ellipse cx="265" cy="292" rx="28" ry="17" fill="none" stroke="#6366f1" stroke-width="1.8"/>
-      <ellipse cx="245" cy="297" rx="17" ry="12" fill="none" stroke="#6366f1" stroke-width="1.8"/>
-      <ellipse cx="288" cy="295" rx="20" ry="14" fill="none" stroke="#6366f1" stroke-width="1.8"/>
-      <circle cx="258" cy="307" r="2.5" fill="#818cf8" class="shimmer"/>
-      <circle cx="268" cy="309" r="2.5" fill="#818cf8" class="shimmer" style="animation-delay:0.5s"/>
-      <circle cx="278" cy="307" r="2.5" fill="#818cf8" class="shimmer" style="animation-delay:1s"/>
-
-      <text x="310" y="350" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="10.5">推理 · 规划 · 反思</text>
-      <text x="310" y="365" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="9.5">思维链 · Chain-of-Thought</text>
-    </g>
-
-    <!-- Arrow Think → Act -->
-    <line x1="490" y1="300" x2="580" y2="300" stroke="#64748b" stroke-width="1.6" stroke-dasharray="8,4" class="flow-line" marker-end="url(#arr)"/>
-    <circle r="4" fill="#6366f1" opacity="0.8">
-      <animateMotion dur="4s" repeatCount="indefinite" path="M 490 300 L 580 300"/>
-    </circle>
-
-    <!-- ── ACT ── -->
-    <g id="act-stage" class="breathe" style="animation-delay:1.5s">
-      <rect x="590" y="210" width="360" height="178" rx="14" fill="#eefbf5" stroke="#a0e8c8" stroke-width="1.2"/>
-      <rect x="590" y="210" width="360" height="34" rx="14" fill="#d8f8e8"/>
-      <rect x="590" y="232" width="360" height="12" fill="#d8f8e8"/>
-      <text x="770" y="234" text-anchor="middle" fill="#0a6838" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Act</text>
-
-      <!-- Gears -->
-      <g transform="translate(710, 292)">
-        <g>
-          <circle cx="0" cy="0" r="20" fill="none" stroke="#10b981" stroke-width="1.8"/>
-          <circle cx="0" cy="0" r="7"  fill="none" stroke="#10b981" stroke-width="1.8"/>
-          ${[0,45,90,135,180,225,270,315].map(a => {
-            const r = a * Math.PI / 180;
-            return `<line x1="${(Math.cos(r)*20).toFixed(1)}" y1="${(Math.sin(r)*20).toFixed(1)}" x2="${(Math.cos(r)*13).toFixed(1)}" y2="${(Math.sin(r)*13).toFixed(1)}" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/>`;
-          }).join('')}
-          <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="30s" repeatCount="indefinite"/>
-        </g>
-      </g>
-      <g transform="translate(775, 307)">
-        <g>
-          <circle cx="0" cy="0" r="20" fill="none" stroke="#34d399" stroke-width="1.8"/>
-          <circle cx="0" cy="0" r="7"  fill="none" stroke="#34d399" stroke-width="1.8"/>
-          ${[0,45,90,135,180,225,270,315].map(a => {
-            const r = a * Math.PI / 180;
-            return `<line x1="${(Math.cos(r)*20).toFixed(1)}" y1="${(Math.sin(r)*20).toFixed(1)}" x2="${(Math.cos(r)*13).toFixed(1)}" y2="${(Math.sin(r)*13).toFixed(1)}" stroke="#34d399" stroke-width="2.5" stroke-linecap="round"/>`;
-          }).join('')}
-          <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="-360 0 0" dur="24s" repeatCount="indefinite"/>
-        </g>
-      </g>
-
-      <text x="770" y="355" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="10.5">选择工具 · 组装调用</text>
-      <text x="770" y="370" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="9.5">工具选择 · 编排调度</text>
-    </g>
-
-    <!-- Arrow Act → Observe -->
-    <line x1="950" y1="300" x2="1040" y2="300" stroke="#64748b" stroke-width="1.6" stroke-dasharray="8,4" class="flow-line" style="animation-delay:1s" marker-end="url(#arr)"/>
-    <circle r="4" fill="#10b981" opacity="0.8">
-      <animateMotion dur="4s" repeatCount="indefinite" begin="2s" path="M 950 300 L 1040 300"/>
-    </circle>
-
-    <!-- ── OBSERVE ── -->
-    <g id="observe-stage" class="breathe" style="animation-delay:3s">
-      <rect x="1050" y="210" width="360" height="178" rx="14" fill="#fff0f6" stroke="#f0b0d0" stroke-width="1.2"/>
-      <rect x="1050" y="210" width="360" height="34" rx="14" fill="#ffe0f0"/>
-      <rect x="1050" y="232" width="360" height="12" fill="#ffe0f0"/>
-      <text x="1230" y="234" text-anchor="middle" fill="#881050" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Observe</text>
-
-      <!-- Eye icon -->
-      <path d="M 1165 292 Q 1230 268 1210 292 Q 1230 316 1165 292 Z" fill="none" stroke="#ec4899" stroke-width="1.8"/>
-      <circle cx="1230" cy="292" r="13" fill="none" stroke="#ec4899" stroke-width="1.8"/>
-      <circle cx="1230" cy="292" r="6" fill="#be185d">
-        <animate attributeName="r" values="5;7;5" dur="2.5s" repeatCount="indefinite"/>
-        <animate attributeName="fill-opacity" values="1;0.5;1" dur="2.5s" repeatCount="indefinite"/>
-      </circle>
-
-      <text x="1230" y="350" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="10.5">解析结果 · 更新状态</text>
-      <text x="1230" y="365" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="9.5">结果解析 · 状态更新</text>
-    </g>
-
-    <!-- Cycle dashed arrow Observe → Think -->
-    <path d="M 1380 300 Q 1400 300 1400 322 Q 1400 418 800 418 Q 200 418 200 342 Q 200 312 220 302"
-          fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-dasharray="8,4" class="cycle-line" marker-end="url(#arrLt)"/>
-    <circle r="5" fill="#94a3b8" opacity="0.7">
-      <animateMotion dur="8s" repeatCount="indefinite" path="M 1380 300 Q 1400 300 1400 322 Q 1400 418 800 418 Q 200 418 200 342 Q 200 312 220 302"/>
-    </circle>
-
-    <!-- Done diamond -->
-    <g id="done-decision" class="diamond-bounce">
-      <polygon points="760,468 840,510 760,552 680,510" fill="#fff" stroke="#475569" stroke-width="1.6"/>
-      <text x="760" y="516" text-anchor="middle" fill="#1e293b" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Done?</text>
-    </g>
-
-    <!-- Arrow Observe → Done -->
-    <path d="M 1230 388 L 1230 460 Q 1230 470 1220 470 L 845 470" fill="none" stroke="#64748b" stroke-width="1.6" marker-end="url(#arr)"/>
-    <circle r="4" fill="#ec4899" opacity="0.8">
-      <animateMotion dur="5s" repeatCount="indefinite" path="M 1230 388 L 1230 460 Q 1230 470 1220 470 L 845 470"/>
-    </circle>
-
-    <!-- Yes → Output -->
-    <line x1="840" y1="510" x2="1060" y2="510" stroke="#22c55e" stroke-width="1.6" stroke-dasharray="8,4" class="flow-line" style="animation-delay:0.6s" marker-end="url(#arrGrn)"/>
-    <text x="950" y="503" text-anchor="middle" fill="#22c55e" font-family="system-ui,sans-serif" font-size="10" font-weight="600">Yes</text>
-
-    <!-- No → Think -->
-    <path d="M 760 552 L 760 588 Q 760 602 740 602 L 380 602 Q 340 602 340 582 L 340 392"
-          fill="none" stroke="#ef4444" stroke-width="1.6" stroke-dasharray="6,4" class="flow-line" style="animation-delay:0.5s" marker-end="url(#arrRed)"/>
-    <circle r="4" fill="#ef4444" opacity="0.8">
-      <animateMotion dur="5.5s" repeatCount="indefinite" path="M 760 552 L 760 588 Q 760 602 740 602 L 380 602 Q 340 602 340 582 L 340 392"/>
-    </circle>
-    <text x="775" y="585" fill="#ef4444" font-family="system-ui,sans-serif" font-size="10" font-weight="600">No</text>
-
-    <!-- Output box -->
-    <g id="output-box">
-      <rect x="1070" y="486" width="110" height="48" rx="10" fill="#e8fff0" stroke="#86efac" stroke-width="1.2"/>
-      <text x="1125" y="508" text-anchor="middle" fill="#15803d" font-family="system-ui,sans-serif" font-size="11" font-weight="600">Output</text>
-      <text x="1125" y="525" text-anchor="middle" fill="#15803d" font-family="system-ui,sans-serif" font-size="14">↑</text>
-    </g>
+    <path d="M810 350 H868" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.4"/>
+    <path d="M810 350 H868" stroke="url(#flowEmerald)" stroke-width="1.6" class="flow"/>
+    <path d="M862 343 L872 350 L862 357" fill="none" stroke="#6EE7B7" stroke-opacity="0.9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="839" y="332" text-anchor="middle" class="mono" font-size="8.5" letter-spacing="1.7" fill="#6D7C92">OUTCOME</text>
   </g>
 
-  <!-- Arrows Core → Bottom -->
-  <line x1="340" y1="533" x2="340" y2="558" stroke="#64748b" stroke-width="1.4" stroke-dasharray="5,3" class="flow-line" marker-end="url(#arr)"/>
-  <line x1="800" y1="533" x2="800" y2="558" stroke="#64748b" stroke-width="1.4" stroke-dasharray="5,3" class="flow-line" style="animation-delay:0.5s" marker-end="url(#arr)"/>
-  <line x1="1300" y1="533" x2="1300" y2="558" stroke="#64748b" stroke-width="1.4" stroke-dasharray="5,3" class="flow-line" style="animation-delay:1s" marker-end="url(#arr)"/>
+  <!-- Stage 01: Think -->
+  <g>
+    <rect x="64" y="224" width="320" height="252" rx="22" fill="url(#cardFill)" stroke="#FFFFFF" stroke-opacity="0.10"/>
+    <rect x="64" y="224" width="320" height="252" rx="22" fill="none" stroke="#A78BFA" stroke-width="1.5" class="stage-glow g1"/>
+    <path d="M92 224.5 H172" stroke="url(#violetGrad)" stroke-width="2" stroke-linecap="round"/>
+    <text x="360" y="253" text-anchor="end" class="mono" font-size="10.5" letter-spacing="1.4" fill="#5E6D82">STEP 01</text>
 
-  <!-- ══════════════════════════════════════════════════════════ -->
-  <!-- BOTTOM THREE COLUMNS                                     -->
-  <!-- ══════════════════════════════════════════════════════════ -->
+    <rect x="88" y="248" width="44" height="44" rx="12" fill="#8B5CF6" fill-opacity="0.13" stroke="#A78BFA" stroke-opacity="0.34"/>
+    <circle cx="110" cy="270" r="34" fill="url(#iconViolet)" class="halo g1"/>
+    <path d="M110 257 L112.4 267.6 L123 270 L112.4 272.4 L110 283 L107.6 272.4 L97 270 L107.6 267.6 Z" fill="#C4B5FD"/>
 
-  <!-- ── LEFT: Memory ── -->
-  <g id="memory-section" class="breathe-slow" style="animation-delay:0.5s">
-    <rect x="50" y="558" width="500" height="445" rx="16" fill="#eef0ff" stroke="#c0c8f0" stroke-width="1.2"/>
-    <text x="300" y="590" text-anchor="middle" fill="#2e38a0" font-family="system-ui,sans-serif" font-size="15" font-weight="700" letter-spacing="0.3">Memory · 记忆</text>
+    <text x="146" y="272" font-size="23" font-weight="600" letter-spacing="-0.3" fill="#F1F5F9">Think</text>
+    <text x="147" y="294" font-size="12" letter-spacing="0.2" fill="#7C8BA1">Reasoning &amp; planning</text>
 
-    <!-- Working Memory -->
-    <g id="working-memory">
-      <rect x="78" y="610" width="444" height="152" rx="12" fill="#fff" stroke="#d0d8f8" stroke-width="1"/>
-      <text x="300" y="638" text-anchor="middle" fill="#3848b8" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Working Memory</text>
+    <text x="88" y="334" font-size="14" letter-spacing="0.05" fill="#A9B6CA">Decompose the goal. Weigh evidence.</text>
+    <text x="88" y="356" font-size="14" letter-spacing="0.05" fill="#A9B6CA">Choose the next best action.</text>
 
-      <!-- Document stack -->
-      <rect x="165" y="658" width="44" height="6" rx="2.5" fill="#c0c8f8" class="shimmer"/>
-      <rect x="161" y="668" width="52" height="6" rx="2.5" fill="#d0d8ff" class="shimmer" style="animation-delay:0.4s"/>
-      <rect x="157" y="678" width="60" height="6" rx="2.5" fill="#e0e4ff" class="shimmer" style="animation-delay:0.8s"/>
-      <rect x="153" y="688" width="68" height="6" rx="2.5" fill="#eef0ff" class="shimmer" style="animation-delay:1.2s"/>
-      <rect x="149" y="698" width="76" height="6" rx="2.5" fill="#f4f4ff" class="shimmer" style="animation-delay:1.6s"/>
-
-      <text x="300" y="728" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="10.5">短期上下文窗口</text>
-      <text x="300" y="743" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="9.5">会话历史 · 工具调用记录</text>
+    <g>
+      <rect x="88" y="380" width="54" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="115" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">PLAN</text>
+      <rect x="150" y="380" width="66" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="183" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">REASON</text>
+      <rect x="224" y="380" width="70" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="259" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">REFLECT</text>
     </g>
 
-    <!-- Long-term Memory -->
-    <g id="longterm-memory">
-      <rect x="78" y="778" width="444" height="152" rx="12" fill="#fff" stroke="#d0d8f8" stroke-width="1"/>
-      <text x="300" y="806" text-anchor="middle" fill="#3848b8" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Long-term Memory</text>
-
-      <!-- Database cylinder -->
-      <ellipse cx="220" cy="838" rx="20" ry="6" fill="none" stroke="#6080d0" stroke-width="1.6">
-        <animate attributeName="stroke-opacity" values="1;0.3;1" dur="4s" repeatCount="indefinite"/>
-      </ellipse>
-      <line x1="200" y1="838" x2="200" y2="858" stroke="#6080d0" stroke-width="1.6">
-        <animate attributeName="stroke-opacity" values="1;0.3;1" dur="4s" repeatCount="indefinite"/>
-      </line>
-      <line x1="240" y1="838" x2="240" y2="858" stroke="#6080d0" stroke-width="1.6">
-        <animate attributeName="stroke-opacity" values="1;0.3;1" dur="4s" repeatCount="indefinite" begin="0.8s"/>
-      </line>
-      <ellipse cx="220" cy="858" rx="20" ry="6" fill="none" stroke="#6080d0" stroke-width="1.6">
-        <animate attributeName="stroke-opacity" values="1;0.3;1" dur="4s" repeatCount="indefinite" begin="1.6s"/>
-      </ellipse>
-      <ellipse cx="220" cy="848" rx="20" ry="6" fill="none" stroke="#90a8e0" stroke-width="1">
-        <animate attributeName="stroke-opacity" values="0.8;0.2;0.8" dur="4s" repeatCount="indefinite" begin="2.4s"/>
-      </ellipse>
-
-      <text x="300" y="888" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="10.5">长期向量知识库</text>
-      <text x="300" y="903" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="9.5">RAG · 知识图谱</text>
+    <text x="88" y="452" class="mono" font-size="8.5" letter-spacing="1.5" fill="#56657A">SIGNAL</text>
+    <g fill="#A78BFA">
+      <rect x="132" y="443" width="2.5" height="10" rx="1.2" class="signal s0"/>
+      <rect x="140" y="439" width="2.5" height="14" rx="1.2" class="signal s1"/>
+      <rect x="148" y="441" width="2.5" height="12" rx="1.2" class="signal s2"/>
+      <rect x="156" y="433" width="2.5" height="20" rx="1.2" class="signal s3"/>
+      <rect x="164" y="436" width="2.5" height="17" rx="1.2" class="signal s4"/>
+      <rect x="172" y="430" width="2.5" height="23" rx="1.2" class="signal s5"/>
+      <rect x="180" y="440" width="2.5" height="13" rx="1.2" class="signal s6"/>
+      <rect x="188" y="434" width="2.5" height="19" rx="1.2" class="signal s7"/>
+      <rect x="196" y="442" width="2.5" height="11" rx="1.2" class="signal s8"/>
     </g>
+    <text x="360" y="452" text-anchor="end" class="mono" font-size="9" letter-spacing="0.8" fill="#C4B5FD">0.8s</text>
   </g>
 
-  <!-- ── CENTER: Safety ── -->
-  <g id="safety-section" class="breathe-slow" style="animation-delay:1s">
-    <rect x="575" y="558" width="450" height="445" rx="16" fill="#fff5f5" stroke="#f0b8b8" stroke-width="1.2"/>
-    <text x="800" y="590" text-anchor="middle" fill="#882020" font-family="system-ui,sans-serif" font-size="15" font-weight="700" letter-spacing="0.3">Safety Layers · 安全校验</text>
+  <!-- Stage 02: Act -->
+  <g>
+    <rect x="480" y="224" width="320" height="252" rx="22" fill="url(#cardFill)" stroke="#FFFFFF" stroke-opacity="0.10"/>
+    <rect x="480" y="224" width="320" height="252" rx="22" fill="none" stroke="#34D399" stroke-width="1.5" class="stage-glow g2"/>
+    <path d="M508 224.5 H588" stroke="url(#emeraldGrad)" stroke-width="2" stroke-linecap="round"/>
+    <text x="776" y="253" text-anchor="end" class="mono" font-size="10.5" letter-spacing="1.4" fill="#5E6D82">STEP 02</text>
 
-    <!-- 4 Safety Gates -->
-    <g id="safety-gates">
-      <!-- Validate -->
-      <rect x="600" y="618" width="94" height="75" rx="10" stroke="#f08080" stroke-width="1.2" class="flash-a"/>
-      <path d="M 647 636 L 632 641 L 632 658 Q 632 670 647 676 Q 662 670 662 658 L 662 641 Z" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linejoin="round"/>
-      <polyline points="639,652 644,658 656,646" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="647" y="686" text-anchor="middle" fill="#882020" font-family="system-ui,sans-serif" font-size="9.5" font-weight="600">Validate</text>
-      <text x="647" y="698" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="8.5">输入校验</text>
-      <line x1="694" y1="656" x2="712" y2="656" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="4,3" class="flow-line" marker-end="url(#arrLt)"/>
+    <rect x="504" y="248" width="44" height="44" rx="12" fill="#10B981" fill-opacity="0.12" stroke="#6EE7B7" stroke-opacity="0.32"/>
+    <circle cx="526" cy="270" r="34" fill="url(#iconEmerald)" class="halo g2"/>
+    <path d="M530 256 L517 272 H525 L521 284 L535 267 H527 Z" fill="#6EE7B7"/>
 
-      <!-- Scope -->
-      <rect x="718" y="618" width="94" height="75" rx="10" stroke="#f0a060" stroke-width="1.2" class="flash-b"/>
-      <rect x="749" y="648" width="20" height="16" rx="3" fill="none" stroke="#d97706" stroke-width="1.8"/>
-      <path d="M 753 648 L 753 640 Q 753 634 759 634 Q 765 634 765 640 L 765 648" fill="none" stroke="#d97706" stroke-width="1.8" stroke-linecap="round"/>
-      <circle cx="759" cy="655" r="2" fill="#d97706"/>
-      <text x="765" y="686" text-anchor="middle" fill="#885010" font-family="system-ui,sans-serif" font-size="9.5" font-weight="600">Scope</text>
-      <text x="765" y="698" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="8.5">权限范围</text>
-      <line x1="812" y1="656" x2="830" y2="656" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="4,3" class="flow-line" style="animation-delay:0.6s" marker-end="url(#arrLt)"/>
+    <text x="562" y="272" font-size="23" font-weight="600" letter-spacing="-0.3" fill="#F1F5F9">Act</text>
+    <text x="563" y="294" font-size="12" letter-spacing="0.2" fill="#7C8BA1">Tool use &amp; execution</text>
 
-      <!-- Budget -->
-      <rect x="836" y="618" width="94" height="75" rx="10" stroke="#e0c840" stroke-width="1.2" class="flash-c"/>
-      <ellipse cx="872" cy="646" rx="13" ry="4" fill="none" stroke="#b8a020" stroke-width="1.8"/>
-      <ellipse cx="877" cy="653" rx="13" ry="4" fill="none" stroke="#b8a020" stroke-width="1.8"/>
-      <ellipse cx="872" cy="660" rx="13" ry="4" fill="none" stroke="#b8a020" stroke-width="1.8"/>
-      <text x="883" y="686" text-anchor="middle" fill="#886810" font-family="system-ui,sans-serif" font-size="9.5" font-weight="600">Budget</text>
-      <text x="883" y="698" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="8.5">成本限速</text>
-      <line x1="930" y1="656" x2="948" y2="656" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="4,3" class="flow-line" style="animation-delay:1.2s" marker-end="url(#arrLt)"/>
+    <text x="504" y="334" font-size="14" letter-spacing="0.05" fill="#A9B6CA">Call tools and write code with</text>
+    <text x="504" y="356" font-size="14" letter-spacing="0.05" fill="#A9B6CA">precise, sandboxed side effects.</text>
 
-      <!-- Allow -->
-      <rect x="954" y="618" width="60" height="75" rx="10" stroke="#80e0a0" stroke-width="1.2" class="flash-d"/>
-      <circle cx="984" cy="650" r="14" fill="none" stroke="#16a34a" stroke-width="1.8"/>
-      <polyline points="977,650 982,656 992,644" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="984" y="686" text-anchor="middle" fill="#106030" font-family="system-ui,sans-serif" font-size="9.5" font-weight="600">Allow</text>
+    <g>
+      <rect x="504" y="380" width="58" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="533" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">TOOLS</text>
+      <rect x="570" y="380" width="54" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="597" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">CODE</text>
+      <rect x="632" y="380" width="52" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="658" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">API</text>
     </g>
 
-    <!-- Pass → -->
-    <path d="M 1014 656 L 1035 656 Q 1042 656 1042 666 L 1042 758" fill="none" stroke="#22c55e" stroke-width="1.4" stroke-dasharray="5,3" class="flow-line" style="animation-delay:1.5s" marker-end="url(#arrGrn)"/>
-    <circle r="3.5" fill="#22c55e" opacity="0.8">
-      <animateMotion dur="4s" repeatCount="indefinite" path="M 1014 656 L 1035 656 Q 1042 656 1042 666 L 1042 758"/>
-    </circle>
-    <text x="1028" y="708" fill="#22c55e" font-family="system-ui,sans-serif" font-size="8.5" font-weight="600">通过</text>
-
-    <!-- Reject -->
-    <path d="M 720 693 L 720 763 Q 720 778 735 778 L 790 778" fill="none" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="5,3" class="flow-line" style="animation-delay:0.5s" marker-end="url(#arrRed)"/>
-    <text x="735" y="733" fill="#ef4444" font-family="system-ui,sans-serif" font-size="8.5" font-weight="600">拒绝</text>
-
-    <!-- Reject + Replan -->
-    <g id="reject-box" class="reject-pulse">
-      <rect x="600" y="783" width="340" height="48" rx="10" fill="#fff5f5" stroke="#f08080" stroke-width="1"/>
-      <text x="770" y="805" text-anchor="middle" fill="#dc2626" font-family="system-ui,sans-serif" font-size="11" font-weight="600">↻ Reject + Replan</text>
-      <text x="770" y="822" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="9">拒绝并重新规划，回流至 Think</text>
+    <text x="504" y="452" class="mono" font-size="8.5" letter-spacing="1.5" fill="#56657A">SIGNAL</text>
+    <g fill="#34D399">
+      <rect x="548" y="440" width="2.5" height="13" rx="1.2" class="signal s2"/>
+      <rect x="556" y="434" width="2.5" height="19" rx="1.2" class="signal s3"/>
+      <rect x="564" y="437" width="2.5" height="16" rx="1.2" class="signal s4"/>
+      <rect x="572" y="430" width="2.5" height="23" rx="1.2" class="signal s5"/>
+      <rect x="580" y="435" width="2.5" height="18" rx="1.2" class="signal s6"/>
+      <rect x="588" y="432" width="2.5" height="21" rx="1.2" class="signal s7"/>
+      <rect x="596" y="442" width="2.5" height="11" rx="1.2" class="signal s8"/>
+      <rect x="604" y="438" width="2.5" height="15" rx="1.2" class="signal s0"/>
+      <rect x="612" y="441" width="2.5" height="12" rx="1.2" class="signal s1"/>
     </g>
+    <text x="776" y="452" text-anchor="end" class="mono" font-size="9" letter-spacing="0.8" fill="#6EE7B7">1.6s</text>
   </g>
 
-  <!-- ── RIGHT: Tools ── -->
-  <g id="tools-section" class="breathe-slow" style="animation-delay:1.5s">
-    <rect x="1050" y="558" width="500" height="445" rx="16" fill="#fffbf0" stroke="#f0d880" stroke-width="1.2"/>
-    <text x="1300" y="590" text-anchor="middle" fill="#886810" font-family="system-ui,sans-serif" font-size="15" font-weight="700" letter-spacing="0.3">Tool Execution · 工具执行</text>
+  <!-- Stage 03: Observe -->
+  <g>
+    <rect x="896" y="224" width="320" height="252" rx="22" fill="url(#cardFill)" stroke="#FFFFFF" stroke-opacity="0.10"/>
+    <rect x="896" y="224" width="320" height="252" rx="22" fill="none" stroke="#FB7185" stroke-width="1.5" class="stage-glow g3"/>
+    <path d="M924 224.5 H1004" stroke="url(#roseGrad)" stroke-width="2" stroke-linecap="round"/>
+    <text x="1192" y="253" text-anchor="end" class="mono" font-size="10.5" letter-spacing="1.4" fill="#5E6D82">STEP 03</text>
 
-    <!-- Tool Types -->
-    <g id="tool-types" class="tool-pulse">
-      <rect x="1078" y="623" width="444" height="95" rx="12" fill="#fff" stroke="#f0d880" stroke-width="1"/>
-      <text x="1300" y="651" text-anchor="middle" fill="#907010" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Tool Types · 工具类型</text>
-      <g transform="translate(1148, 683)">
-        <rect x="-6" y="-10" width="12" height="14" rx="2.5" fill="none" stroke="#b89010" stroke-width="1.6"/>
-        <circle cx="0" cy="0" r="4.5" fill="none" stroke="#b89010" stroke-width="1.6"/>
-        <line x1="-6" y1="-10" x2="-9" y2="-13" stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="6"  y1="-10" x2="9"  y2="-13" stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="-6" y1="4"   x2="-9" y2="7"   stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="6"  y1="4"   x2="9"  y2="7"   stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-      </g>
-      <text x="1300" y="683" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="9.5">Bash · API · 文件读写 · 浏览器 · MCP</text>
-      <text x="1300" y="698" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="8.5">函数调用 · 插件系统 · 自定义工具</text>
+    <rect x="920" y="248" width="44" height="44" rx="12" fill="#F43F5E" fill-opacity="0.11" stroke="#FDA4AF" stroke-opacity="0.30"/>
+    <circle cx="942" cy="270" r="34" fill="url(#iconRose)" class="halo g3"/>
+    <path d="M930 270 C933 264 937 261 942 261 C947 261 951 264 954 270 C951 276 947 279 942 279 C937 279 933 276 930 270 Z" fill="none" stroke="#FDA4AF" stroke-width="1.6"/>
+    <circle cx="942" cy="270" r="3.2" fill="#FDA4AF"/>
+
+    <text x="978" y="272" font-size="23" font-weight="600" letter-spacing="-0.3" fill="#F1F5F9">Observe</text>
+    <text x="979" y="294" font-size="12" letter-spacing="0.2" fill="#7C8BA1">Verification &amp; learning</text>
+
+    <text x="920" y="334" font-size="14" letter-spacing="0.05" fill="#A9B6CA">Read the result. Verify the goal.</text>
+    <text x="920" y="356" font-size="14" letter-spacing="0.05" fill="#A9B6CA">Update the plan and iterate.</text>
+
+    <g>
+      <rect x="920" y="380" width="62" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="951" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">VERIFY</text>
+      <rect x="990" y="380" width="58" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="1019" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">TRACE</text>
+      <rect x="1056" y="380" width="58" height="24" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#FFFFFF" stroke-opacity="0.09"/>
+      <text x="1085" y="396" text-anchor="middle" class="mono" font-size="9" letter-spacing="1.1" fill="#9CA9BC">LEARN</text>
     </g>
 
-    <!-- Dispatch -->
-    <g id="dispatch-box" class="tool-pulse">
-      <rect x="1078" y="736" width="444" height="95" rx="12" fill="#fff" stroke="#f0d880" stroke-width="1"/>
-      <text x="1300" y="764" text-anchor="middle" fill="#907010" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Dispatch · 调度分发</text>
-      <g transform="translate(1148, 796)" class="send-pulse">
-        <circle cx="0" cy="0" r="11" fill="none" stroke="#b89010" stroke-width="1.6"/>
-        <line x1="0" y1="-11" x2="0" y2="-5" stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="0" y1="-11" x2="-3.5" y2="-6.5" stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="0" y1="-11" x2="3.5"  y2="-6.5" stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-        <line x1="0" y1="0" x2="0" y2="11" stroke="#b89010" stroke-width="1.4" stroke-linecap="round"/>
-        <line x1="0" y1="0" x2="-3.5" y2="3.5" stroke="#b89010" stroke-width="1.4" stroke-linecap="round"/>
-        <line x1="0" y1="0" x2="3.5" y2="3.5" stroke="#b89010" stroke-width="1.4" stroke-linecap="round"/>
-      </g>
-      <text x="1300" y="796" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="9.5">并行调度 · 超时重试 · 结果聚合</text>
-      <text x="1300" y="811" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="8.5">限流 · 降级 · 熔断</text>
+    <text x="920" y="452" class="mono" font-size="8.5" letter-spacing="1.5" fill="#56657A">SIGNAL</text>
+    <g fill="#FB7185">
+      <rect x="964" y="441" width="2.5" height="12" rx="1.2" class="signal s4"/>
+      <rect x="972" y="436" width="2.5" height="17" rx="1.2" class="signal s5"/>
+      <rect x="980" y="432" width="2.5" height="21" rx="1.2" class="signal s6"/>
+      <rect x="988" y="437" width="2.5" height="16" rx="1.2" class="signal s7"/>
+      <rect x="996" y="430" width="2.5" height="23" rx="1.2" class="signal s8"/>
+      <rect x="1004" y="434" width="2.5" height="19" rx="1.2" class="signal s0"/>
+      <rect x="1012" y="440" width="2.5" height="13" rx="1.2" class="signal s1"/>
+      <rect x="1020" y="435" width="2.5" height="18" rx="1.2" class="signal s2"/>
+      <rect x="1028" y="442" width="2.5" height="11" rx="1.2" class="signal s3"/>
+    </g>
+    <text x="1192" y="452" text-anchor="end" class="mono" font-size="9" letter-spacing="0.8" fill="#FDA4AF">2.4s</text>
+  </g>
+
+  <!-- Loop rail -->
+  <g>
+    <path id="loopRail" d="M1056 476 L1056 508 Q1056 536 1028 536 L252 536 Q224 536 224 508 L224 486" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="1.4"/>
+    <path d="M1056 476 L1056 508 Q1056 536 1028 536 L252 536 Q224 536 224 508 L224 486" fill="none" stroke="url(#railGrad)" stroke-width="1.6" class="flow"/>
+    <path d="M224 478 L218 488 L230 488 Z" fill="#A78BFA" opacity="0.95"/>
+
+    <g>
+      <circle r="9" fill="#A78BFA" opacity="0.12"/>
+      <circle r="3.2" fill="#DDD6FE"/>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="8s" repeatCount="indefinite"/>
+      <animateMotion dur="8s" repeatCount="indefinite">
+        <mpath href="#loopRail"/>
+      </animateMotion>
+    </g>
+    <g>
+      <circle r="6" fill="#F43F5E" opacity="0.12"/>
+      <circle r="2.2" fill="#FDA4AF"/>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.95;1" dur="8s" repeatCount="indefinite" begin="-4s"/>
+      <animateMotion dur="8s" repeatCount="indefinite" begin="-4s">
+        <mpath href="#loopRail"/>
+      </animateMotion>
     </g>
 
-    <!-- Return Result -->
-    <g id="return-box" class="tool-pulse" style="animation-delay:1.2s">
-      <rect x="1078" y="849" width="444" height="95" rx="12" fill="#fff" stroke="#f0d880" stroke-width="1"/>
-      <text x="1300" y="877" text-anchor="middle" fill="#907010" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Return Result · 结果回传</text>
-      <g transform="translate(1148, 909)" class="send-pulse" style="animation-delay:1s">
-        <path d="M 14 9 Q -7 9 -7 -1 L -11 -1 L -7 4 L -7 -7" fill="none" stroke="#b89010" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-        <line x1="-11" y1="-1" x2="-11" y2="9" stroke="#b89010" stroke-width="1.6" stroke-linecap="round"/>
-      </g>
-      <text x="1300" y="909" text-anchor="middle" fill="#4a4a6a" font-family="system-ui,sans-serif" font-size="9.5">结果解析 · 格式化 · 输入 Observe</text>
-      <text x="1300" y="924" text-anchor="middle" fill="#8888a8" font-family="system-ui,sans-serif" font-size="8.5">结构化输出 · 错误码映射</text>
+    <rect x="536" y="520" width="208" height="32" rx="16" fill="#0A101C" stroke="#FFFFFF" stroke-opacity="0.13"/>
+    <path d="M556 536 A7 7 0 1 1 562 542" fill="none" stroke="#94A3B8" stroke-width="1.3" stroke-linecap="round"/>
+    <path d="M562 536 L562 542 L556 542" fill="none" stroke="#94A3B8" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="575" y="540" class="mono" font-size="9.5" letter-spacing="1.8" fill="#94A3B8">REPEAT UNTIL DONE</text>
+  </g>
+
+  <!-- Capability panels -->
+  <g>
+    <rect x="64" y="584" width="320" height="122" rx="16" fill="#FFFFFF" fill-opacity="0.028" stroke="#FFFFFF" stroke-opacity="0.075"/>
+    <rect x="64" y="600" width="2" height="90" rx="1" fill="#A78BFA" opacity="0.55"/>
+    <rect x="88" y="604" width="32" height="32" rx="9" fill="#8B5CF6" fill-opacity="0.10" stroke="#A78BFA" stroke-opacity="0.22"/>
+    <g fill="none" stroke="#C4B5FD" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="104" cy="611" rx="7" ry="3"/>
+      <path d="M97 611 V617 C97 618.7 100.1 620 104 620 C107.9 620 111 618.7 111 617 V611"/>
+      <path d="M97 617 V623 C97 624.7 100.1 626 104 626 C107.9 626 111 624.7 111 623 V617"/>
     </g>
+    <text x="132" y="617" font-size="14.5" font-weight="600" letter-spacing="0.1" fill="#E2E8F0">Memory</text>
+    <text x="132" y="638" font-size="11.5" letter-spacing="0.1" fill="#74839A">Artifacts, skills, context</text>
+    <text x="360" y="620" text-anchor="end" class="mono" font-size="20" fill="#C4B5FD">12</text>
+    <path d="M88 676 H360" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M88 676 H244" stroke="#A78BFA" stroke-opacity="0.42" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <g>
+    <rect x="480" y="584" width="320" height="122" rx="16" fill="#FFFFFF" fill-opacity="0.028" stroke="#FFFFFF" stroke-opacity="0.075"/>
+    <rect x="480" y="600" width="2" height="90" rx="1" fill="#34D399" opacity="0.50"/>
+    <rect x="504" y="604" width="32" height="32" rx="9" fill="#10B981" fill-opacity="0.10" stroke="#6EE7B7" stroke-opacity="0.20"/>
+    <path d="M520 608 L527 611 V616 C527 620.5 524 623.5 520 625 C516 623.5 513 620.5 513 616 V611 Z" fill="none" stroke="#6EE7B7" stroke-width="1.3" stroke-linejoin="round"/>
+    <path d="M517.5 616 L519.5 618 L523 614.5" fill="none" stroke="#6EE7B7" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="548" y="617" font-size="14.5" font-weight="600" letter-spacing="0.1" fill="#E2E8F0">Safety</text>
+    <text x="548" y="638" font-size="11.5" letter-spacing="0.1" fill="#74839A">Policy gates and review</text>
+    <circle cx="742" cy="614" r="4" fill="#34D399" class="status-dot"/>
+    <text x="776" y="620" text-anchor="end" class="mono" font-size="9" letter-spacing="1.1" fill="#6EE7B7">ON</text>
+    <path d="M504 676 H776" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M504 676 H716" stroke="#34D399" stroke-opacity="0.38" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <g>
+    <rect x="896" y="584" width="320" height="122" rx="16" fill="#FFFFFF" fill-opacity="0.028" stroke="#FFFFFF" stroke-opacity="0.075"/>
+    <rect x="896" y="600" width="2" height="90" rx="1" fill="#FB7185" opacity="0.48"/>
+    <rect x="920" y="604" width="32" height="32" rx="9" fill="#F43F5E" fill-opacity="0.09" stroke="#FDA4AF" stroke-opacity="0.20"/>
+    <g fill="none" stroke="#FDA4AF" stroke-width="1.3" stroke-linecap="round">
+      <path d="M929 612 H943"/>
+      <circle cx="932" cy="612" r="1.6" fill="#FDA4AF"/>
+      <path d="M929 618 H943"/>
+      <circle cx="938" cy="618" r="1.6" fill="#FDA4AF"/>
+      <path d="M929 624 H943"/>
+      <circle cx="934" cy="624" r="1.6" fill="#FDA4AF"/>
+    </g>
+    <text x="964" y="617" font-size="14.5" font-weight="600" letter-spacing="0.1" fill="#E2E8F0">Tools</text>
+    <text x="964" y="638" font-size="11.5" letter-spacing="0.1" fill="#74839A">Sandboxed tools and APIs</text>
+    <text x="1192" y="620" text-anchor="end" class="mono" font-size="20" fill="#FDA4AF">42</text>
+    <path d="M920 676 H1192" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M920 676 H1052" stroke="#FB7185" stroke-opacity="0.36" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Footer -->
+  <g class="mono" font-size="9.5" letter-spacing="1.5" fill="#475569">
+    <text x="64" y="752">SVG ANIMATION PIPELINE</text>
+    <text x="640" y="752" text-anchor="middle" fill="#5C6B82">THINK → ACT → OBSERVE → REPEAT</text>
+    <text x="1216" y="752" text-anchor="end">1280×800 / 25 FPS / 8.0S</text>
   </g>
 </svg>
 `;
 
 async function main() {
-  console.log('Agent Loop — Ultimate Premium PPT Style\n');
+  const format = (process.argv[2] || 'gif').toLowerCase();
+  const output = `./output/agent-loop.${format === 'mp4' ? 'mp4' : 'gif'}`;
 
   const pipeline = new SVGAnimationPipeline({
     input: svgContent,
-    output: './output/agent-loop.gif',
-    fps: 30,
-    duration: 6000,
-    width: 1600,
-    height: 1050,
-    background: '#fafbfc',
+    output,
+    fps: 25,
+    duration: 8000,
+    width: 1280,
+    height: 800,
+    background: '#05070E',
     quality: 'high',
+    pixelRatio: 1,
     preserveNativeAnimations: true,
   });
 
   pipeline.on('progress', (progress: ProgressInfo) => {
-    const bar = '█'.repeat(Math.floor(progress.percent / 5)) + '░'.repeat(20 - Math.floor(progress.percent / 5));
-    process.stdout.write(`\r[${bar}] ${progress.percent}% ${progress.message || ''}`);
+    if (progress.phase === 'rendering') {
+      const bar = '█'.repeat(Math.floor(progress.percent / 5)) + '░'.repeat(20 - Math.floor(progress.percent / 5));
+      process.stdout.write(`\r[${bar}] ${progress.percent}% ${progress.message || ''}`);
+    } else if (progress.message) {
+      process.stdout.write(`\r${progress.message}                    `);
+    }
   });
 
   const result = await pipeline.render();
-
-  console.log('\n\n✅ Render complete!');
-  console.log(`   Output: ${result.output}`);
-  console.log(`   Frames: ${result.frames}`);
-  console.log(`   Duration: ${result.duration.toFixed(2)}s`);
+  process.stdout.write('\n');
+  console.log(`✅ ${result.output} (${result.frames} frames in ${result.duration.toFixed(2)}s)`);
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -4,6 +4,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import {
   PipelineConfig,
   PipelineOptions,
@@ -32,8 +33,19 @@ export interface PipelineConfigInput {
   height: number;
   background?: string;
   quality?: 'low' | 'medium' | 'high';
-  /** Preserve native SVG animations (CSS @keyframes + SMIL) for SVG-native animation workflows */
+  /**
+   * Supersampling factor. 1 keeps the output exactly width x height; 2 renders
+   * at 2x and downscales nothing (the encoded file is 2x). Defaults to 1.
+   */
+  pixelRatio?: number;
+  /** Preserve native SVG animations (CSS @keyframes + SMIL) for SVG-native animation workflows. Defaults to false. */
   preserveNativeAnimations?: boolean;
+  /** Keep the rendered PNG frames after encoding (defaults to false). */
+  keepFrames?: boolean;
+  /** Explicit temp directory. Defaults to a unique directory under the OS temp dir. */
+  tempDir?: string;
+  /** Chrome/Chromium binary used for frame capture. Falls back to PUPPETEER_EXECUTABLE_PATH. */
+  executablePath?: string;
 }
 
 export interface LLMRenderRequest {
@@ -71,12 +83,16 @@ export class SVGAnimationPipeline {
       output: path.resolve(config.output),
       background: config.background || '#ffffff',
       quality: config.quality || 'medium',
-      tempDir: path.join(process.cwd(), '.svg-anim-temp'),
-      keepFrames: false,
+      pixelRatio: config.pixelRatio ?? 1,
+      tempDir: config.tempDir
+        ? path.resolve(config.tempDir)
+        : fs.mkdtempSync(path.join(os.tmpdir(), 'svg-anim-')),
+      keepFrames: config.keepFrames ?? false,
     };
 
     this.events = events || {};
-    this.tempDir = this.config.tempDir ?? path.join(process.cwd(), '.svg-anim-temp');
+    this.tempDir = this.config.tempDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'svg-anim-'));
+    fs.mkdirSync(this.tempDir, { recursive: true });
 
     // Initialize components
     this.animator = new SVGAnimator();
@@ -86,7 +102,10 @@ export class SVGAnimationPipeline {
         height: this.config.height,
         background: this.config.background,
         quality: this.config.quality,
+        pixelRatio: this.config.pixelRatio,
       },
+      tempDir: this.tempDir,
+      executablePath: this.config.executablePath,
     });
     this.encoder = new FFmpegEncoder(this.tempDir, path.dirname(this.config.output));
   }
@@ -153,11 +172,6 @@ export class SVGAnimationPipeline {
       this.reportProgress('encoding', 0, 0, 0, 'Encoding output...');
       await this.encodePhase();
 
-      // Cleanup
-      if (!this.config.keepFrames) {
-        await this.encoder.cleanupTempFiles();
-      }
-
       const result: RenderResult = {
         output: this.config.output,
         frames: this.framePaths.length,
@@ -173,6 +187,9 @@ export class SVGAnimationPipeline {
       throw error;
     } finally {
       await this.close();
+      if (!this.config.keepFrames) {
+        await this.encoder.cleanupTempFiles().catch(() => undefined);
+      }
     }
   }
 
@@ -184,20 +201,30 @@ export class SVGAnimationPipeline {
     if (fs.existsSync(this.config.input)) {
       const svg = await loadSVG(this.config.input);
       this.parsedSvg = svg;
-      const preserveNative = this.config.preserveNativeAnimations ?? !fs.existsSync(this.config.input);
-      this.svgContent = prepareForAnimation(svg.raw, this.animations.map((a) => ({
-        targets: Array.isArray(a.targets) ? a.targets[0] : a.targets,
-        properties: Object.keys(a.keyframes[0]?.properties || {}),
-      })), preserveNative);
+      this.svgContent = prepareForAnimation(
+        svg.raw,
+        this.animationTargetSummary(),
+        this.config.preserveNativeAnimations ?? false
+      );
     } else {
       // Treat input as SVG content
       const svg = parseSVG(this.config.input);
       this.parsedSvg = svg;
-      const preserveNative = this.config.preserveNativeAnimations ?? true;
-      this.svgContent = prepareForAnimation(this.config.input, [], preserveNative);
+      this.svgContent = prepareForAnimation(
+        this.config.input,
+        this.animationTargetSummary(),
+        this.config.preserveNativeAnimations ?? false
+      );
     }
 
     this.reportProgress('loading', 50, 0, 0, `SVG parsed: ${this.parsedSvg.layers.length} layers found`);
+  }
+
+  private animationTargetSummary(): Array<{ targets: string; properties: string[] }> {
+    return this.animations.map((animation) => ({
+      targets: Array.isArray(animation.targets) ? animation.targets[0] : animation.targets,
+      properties: Object.keys(animation.keyframes[0]?.properties || {}),
+    }));
   }
 
   /**
@@ -262,13 +289,19 @@ export class SVGAnimationPipeline {
 
     switch (ext) {
       case '.gif':
-        await this.encoder.encodeGIF(this.framePaths, this.config.output, this.config.fps);
+        await this.encoder.encodeGIF(this.framePaths, this.config.output, this.config.fps, {
+          quality: this.config.quality,
+        });
         break;
       case '.mp4':
-        await this.encoder.encodeMP4(this.framePaths, this.config.output, this.config.fps);
+        await this.encoder.encodeMP4(this.framePaths, this.config.output, this.config.fps, {
+          quality: this.config.quality,
+        });
         break;
       case '.webm':
-        await this.encoder.encodeWebM(this.framePaths, this.config.output, this.config.fps);
+        await this.encoder.encodeWebM(this.framePaths, this.config.output, this.config.fps, {
+          quality: this.config.quality,
+        });
         break;
       default:
         throw new Error(`Unsupported output format: ${ext}`);
@@ -332,6 +365,13 @@ export class SVGAnimationPipeline {
   }
 
   /**
+   * Temp directory used for rendered frames.
+   */
+  getTempDir(): string {
+    return this.tempDir;
+  }
+
+  /**
    * Generate and render diagram from natural language description using LLM
    *
    * This is a convenience method that:
@@ -358,16 +398,17 @@ export class SVGAnimationPipeline {
     // Phase 2: Create pipeline with generated content
     const outputConfig = request.outputConfig || {};
     const pipeline = new SVGAnimationPipeline({
+      ...outputConfig,
       input: llmResponse.svg,
       output: outputConfig.output || './output/generated.gif',
-      fps: outputConfig.fps || 30,
-      duration: outputConfig.duration || 6000,
-      width: outputConfig.width || 1400,
-      height: outputConfig.height || 950,
+      fps: outputConfig.fps ?? 30,
+      duration: outputConfig.duration ?? 6000,
+      width: outputConfig.width ?? 1400,
+      height: outputConfig.height ?? 950,
       background: outputConfig.background,
       quality: outputConfig.quality,
-      preserveNativeAnimations: !!llmResponse.css,
-      ...outputConfig,
+      preserveNativeAnimations:
+        outputConfig.preserveNativeAnimations ?? !!llmResponse.css,
     });
 
     // Phase 3: Add LLM-generated animations
@@ -408,6 +449,7 @@ export async function renderSVGAnimation(
     height?: number;
     background?: string;
     quality?: 'low' | 'medium' | 'high';
+    pixelRatio?: number;
     preserveNativeAnimations?: boolean;
   }
 ): Promise<RenderResult> {
@@ -434,7 +476,8 @@ export async function renderSVGAnimation(
     height,
     background: options?.background,
     quality: options?.quality,
-    preserveNativeAnimations: options?.preserveNativeAnimations ?? !fs.existsSync(svgInput),
+    pixelRatio: options?.pixelRatio,
+    preserveNativeAnimations: options?.preserveNativeAnimations ?? false,
   });
 
   pipeline.addAnimations(animations);

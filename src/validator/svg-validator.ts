@@ -159,8 +159,41 @@ export function prepareForAnimation(
 
   // Remove CSS @keyframes from style tags (programmatic animation handles them)
   prepared = prepared.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, (match) => {
-    return match.replace(/@keyframes\s+[\w-]+\s*\{[\s\S]*?\}/gi, '');
+    return stripCssKeyframes(match);
   });
 
   return prepared;
+}
+
+/**
+ * Remove @keyframes blocks with balanced-brace scanning.
+ *
+ * The previous regex stopped at the first inner `}`, leaving orphan keyframe
+ * steps behind and producing malformed CSS.
+ */
+function stripCssKeyframes(css: string): string {
+  const startPattern = /@(?:-\w+-)?keyframes\s+[\w-]+\s*\{/gi;
+  let result = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = startPattern.exec(css)) !== null) {
+    const blockStart = match.index;
+    let index = startPattern.lastIndex;
+    let depth = 1;
+
+    while (index < css.length && depth > 0) {
+      const char = css[index];
+      if (char === '{') depth++;
+      else if (char === '}') depth--;
+      index++;
+    }
+
+    result += css.slice(cursor, blockStart);
+    cursor = index;
+    startPattern.lastIndex = index;
+  }
+
+  result += css.slice(cursor);
+  return result;
 }

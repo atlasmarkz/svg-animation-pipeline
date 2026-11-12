@@ -13,12 +13,14 @@ import {
 import {
   mergeRenderOptions,
   mergeBrowserConfig,
-  QUALITY_PRESETS,
 } from './render-options';
 
 export interface PuppeteerRendererOptions {
   render?: Partial<RenderOptions>;
   browser?: Partial<BrowserConfig>;
+  tempDir?: string;
+  /** Explicit Chrome/Chromium binary. Falls back to PUPPETEER_EXECUTABLE_PATH. */
+  executablePath?: string;
 }
 
 /**
@@ -31,11 +33,34 @@ export class PuppeteerRenderer {
   private browserConfig: BrowserConfig;
   private tempDir: string;
   private initialized: boolean = false;
+  private outputScale: number;
+  private executablePath?: string;
 
   constructor(options?: PuppeteerRendererOptions) {
     this.options = mergeRenderOptions(options?.render);
     this.browserConfig = mergeBrowserConfig(options?.browser);
-    this.tempDir = path.join(process.cwd(), '.svg-anim-temp');
+    this.tempDir = options?.tempDir || path.join(process.cwd(), '.svg-anim-temp');
+    this.executablePath = options?.executablePath;
+    this.outputScale = this.resolveOutputScale();
+  }
+
+  /**
+   * Resolve the supersampling factor.
+   *
+   * `pixelRatio` wins, then an explicit `deviceScaleFactor`. The `quality`
+   * preset no longer multiplies the canvas implicitly.
+   */
+  private resolveOutputScale(): number {
+    const requested = this.options.pixelRatio ?? this.options.deviceScaleFactor ?? 1;
+    if (!Number.isFinite(requested) || requested <= 0) return 1;
+    return Math.min(Math.max(requested, 0.25), 4);
+  }
+
+  setTempDir(dir: string): void {
+    this.tempDir = dir;
+    if (!fs.existsSync(this.tempDir)) {
+      fs.mkdirSync(this.tempDir, { recursive: true });
+    }
   }
 
   /**
@@ -44,41 +69,52 @@ export class PuppeteerRenderer {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Create temp directory
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
 
-    // Launch browser
-    this.browser = await puppeteer.launch({
-      headless: this.browserConfig.headless,
-      args: this.browserConfig.args,
-    });
+    const executablePath = this.executablePath || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
 
-    // Create page
+    try {
+      this.browser = await puppeteer.launch({
+        headless: this.browserConfig.headless,
+        args: this.browserConfig.args,
+        timeout: this.browserConfig.timeout,
+        executablePath,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        'Failed to launch Chrome for SVG rendering. ' +
+        'Install a browser with `npx puppeteer browsers install chrome`, or set ' +
+        'PUPPETEER_EXECUTABLE_PATH to a local Chrome/Chromium binary. ' +
+        `Underlying error: ${message}`
+      );
+    }
+
     this.page = await this.browser.newPage();
 
-    // Set viewport
-    const qualityPreset = QUALITY_PRESETS[this.options.quality];
+    // The viewport is the logical canvas. deviceScaleFactor is the only
+    // multiplication applied, and it is explicit.
     await this.page.setViewport({
       width: this.options.width,
       height: this.options.height,
-      deviceScaleFactor: qualityPreset.deviceScaleFactor,
+      deviceScaleFactor: this.outputScale,
     });
 
-    // Disable external resources
+    // Disable external resources so a render is reproducible offline.
     await this.page.setRequestInterception(true);
     this.page.on('request', (request) => {
       const url = request.url();
       if (
-        url.startsWith('http://') ||
-        url.startsWith('https://') ||
-        url.startsWith('//')
+        (url.startsWith('http://') ||
+          url.startsWith('https://') ||
+          url.startsWith('//')) &&
+        !url.startsWith('data:') &&
+        !url.startsWith('blob:')
       ) {
-        if (!url.startsWith('data:') && !url.startsWith('blob:')) {
-          request.abort();
-          return;
-        }
+        request.abort();
+        return;
       }
       request.continue();
     });
@@ -102,24 +138,45 @@ export class PuppeteerRenderer {
   async loadSVG(svgContent: string, cssStyles?: string): Promise<void> {
     const page = this.getPage();
 
-    // Wrap SVG in HTML document with optional CSS
     const html = this.createHTMLDocument(svgContent, cssStyles);
-
     await page.setContent(html, { waitUntil: 'domcontentloaded' });
 
-    // Brief pause for initial rendering
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Fonts must be ready before frame 0 or text pops between frames.
+    await page.evaluate(async () => {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+    });
+
+    // Freeze CSS/SMIL timelines; each frame seeks them explicitly.
+    await page.evaluate(() => {
+      const svgs = Array.from(document.querySelectorAll('svg')) as SVGSVGElement[];
+      for (const svg of svgs) {
+        try {
+          svg.pauseAnimations();
+          svg.setCurrentTime(0);
+        } catch {
+          // Not a root SVG (or SMIL unsupported) - CSS still obeys seek below.
+        }
+      }
+      if (typeof document.getAnimations === 'function') {
+        for (const animation of document.getAnimations()) {
+          try {
+            animation.pause();
+            animation.currentTime = 0;
+          } catch {
+            // Ignore individual animations that cannot be seeked.
+          }
+        }
+      }
+    });
   }
 
   /**
    * Create HTML document wrapper for SVG
    */
   private createHTMLDocument(svg: string, css?: string): string {
-    // Wrap SVG with explicit dimensions
-    const wrappedSvg = svg.replace(
-      '<svg',
-      `<svg width="${this.options.width}" height="${this.options.height}"`
-    );
+    const wrappedSvg = this.normalizeRootSvg(svg);
 
     return `
 <!DOCTYPE html>
@@ -135,7 +192,14 @@ export class PuppeteerRenderer {
       overflow: hidden;
       background: ${this.options.background};
     }
-    svg { display: block; }
+    body { position: relative; }
+    svg {
+      display: block;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
     ${css || ''}
   </style>
 </head>
@@ -147,19 +211,78 @@ export class PuppeteerRenderer {
   }
 
   /**
+   * Replace (not blindly prepend) the root SVG dimensions.
+   *
+   * The old implementation inserted `width`/`height` before the existing ones,
+   * producing duplicate attributes and accidentally overriding the design's
+   * intrinsic aspect ratio.
+   */
+  private normalizeRootSvg(svg: string): string {
+    return svg.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
+      const cleaned = attrs
+        .replace(/\swidth\s*=\s*("[^"]*"|'[^']*')/gi, '')
+        .replace(/\sheight\s*=\s*("[^"]*"|'[^']*')/gi, '');
+      return `<svg${cleaned} width="${this.options.width}" height="${this.options.height}">`;
+    });
+  }
+
+  /**
    * Apply animation state to SVG elements
    */
   async applyState(stateScript: string): Promise<void> {
-    const page = this.getPage();
-    await page.evaluate(stateScript);
+    await this.getPage().evaluate(stateScript);
   }
 
   /**
    * Initialize DOM element cache for animated selectors (run once after SVG load)
    */
   async initCache(initCacheScript: string): Promise<void> {
-    const page = this.getPage();
-    await page.evaluate(initCacheScript);
+    await this.getPage().evaluate(initCacheScript);
+  }
+
+  /**
+   * Seek every animation timeline to an exact time.
+   *
+   * Native CSS animations and SMIL both run on wall-clock time by default,
+   * which makes frame capture jitter and loops non-reproducible. Pausing and
+   * setting `currentTime` gives deterministic, exactly-loopable frames.
+   */
+  async seekAnimations(timeMs: number): Promise<void> {
+    await this.getPage().evaluate((time: number) => {
+      if (typeof document.getAnimations === 'function') {
+        const animations = document.getAnimations();
+        for (const animation of animations) {
+          try {
+            animation.pause();
+            animation.currentTime = time;
+          } catch {
+            // Ignore individual animations that cannot be seeked.
+          }
+        }
+      }
+
+      const svgs = Array.from(document.querySelectorAll('svg')) as SVGSVGElement[];
+      for (const svg of svgs) {
+        try {
+          svg.pauseAnimations();
+          svg.setCurrentTime(time / 1000);
+        } catch {
+          // Ignore non-SMIL SVGs.
+        }
+      }
+    }, timeMs);
+  }
+
+  /**
+   * Wait until the frame after the one we just mutated has been painted.
+   */
+  private async waitForPaint(): Promise<void> {
+    await this.getPage().evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        })
+    );
   }
 
   /**
@@ -168,13 +291,20 @@ export class PuppeteerRenderer {
   async renderFrameOptimized(time: number, optimizedScript: string): Promise<FrameData> {
     const page = this.getPage();
 
-    // Apply animation state via cached references
     await page.evaluate(optimizedScript);
+    await this.seekAnimations(time);
+    await this.waitForPaint();
 
-    // Capture screenshot
     const buffer = await page.screenshot({
       type: 'png',
       omitBackground: false,
+      clip: {
+        x: 0,
+        y: 0,
+        width: this.options.width,
+        height: this.options.height,
+      },
+      captureBeyondViewport: false,
     });
 
     return {
@@ -190,16 +320,20 @@ export class PuppeteerRenderer {
   async renderFrame(time: number, stateScript: string): Promise<FrameData> {
     const page = this.getPage();
 
-    // Apply animation state
     await page.evaluate(stateScript);
+    await this.seekAnimations(time);
+    await this.waitForPaint();
 
-    // Wait for rendering
-    await new Promise((resolve) => setTimeout(resolve, 16));
-
-    // Capture screenshot
     const buffer = await page.screenshot({
       type: 'png',
       omitBackground: false,
+      clip: {
+        x: 0,
+        y: 0,
+        width: this.options.width,
+        height: this.options.height,
+      },
+      captureBeyondViewport: false,
     });
 
     return {
@@ -251,7 +385,6 @@ export class PuppeteerRenderer {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // If retry, ensure page is still valid
         if (attempt > 1) {
           await this.ensurePageValid();
         }
@@ -261,12 +394,9 @@ export class PuppeteerRenderer {
         lastError = error as Error;
 
         if (attempt < maxRetries) {
-          // Exponential backoff
           const delay = Math.pow(2, attempt) * 100;
           console.warn(`Frame render failed (attempt ${attempt}), retrying in ${delay}ms...`);
           await this.sleep(delay);
-
-          // Reinitialize if needed
           await this.ensurePageValid();
         }
       }
@@ -285,10 +415,8 @@ export class PuppeteerRenderer {
     }
 
     try {
-      // Test if page is still responsive
       await this.page.title();
     } catch {
-      // Page is dead, recreate
       console.warn('Page became invalid, recreating...');
       await this.close();
       await this.initialize();
@@ -300,6 +428,10 @@ export class PuppeteerRenderer {
    */
   async saveFrame(frame: FrameData, filename: string): Promise<string> {
     const filepath = path.join(this.tempDir, filename);
+
+    if (!fs.existsSync(this.tempDir)) {
+      fs.mkdirSync(this.tempDir, { recursive: true });
+    }
 
     if (frame.buffer) {
       await fs.promises.writeFile(filepath, frame.buffer);
@@ -333,16 +465,18 @@ export class PuppeteerRenderer {
   }
 
   /**
+   * Get the effective output scale (pixelRatio / deviceScaleFactor).
+   */
+  getOutputScale(): number {
+    return this.outputScale;
+  }
+
+  /**
    * Clean up temp directory
    */
   async cleanup(): Promise<void> {
-    if (fs.existsSync(this.tempDir)) {
-      const files = await fs.promises.readdir(this.tempDir);
-      await Promise.all(
-        files.map((file) => fs.promises.unlink(path.join(this.tempDir, file)))
-      );
-      await fs.promises.rmdir(this.tempDir);
-    }
+    if (!fs.existsSync(this.tempDir)) return;
+    await fs.promises.rm(this.tempDir, { recursive: true, force: true });
   }
 
   /**
@@ -350,12 +484,20 @@ export class PuppeteerRenderer {
    */
   async close(): Promise<void> {
     if (this.page) {
-      await this.page.close();
+      try {
+        await this.page.close();
+      } catch {
+        // Page may already be closed.
+      }
       this.page = null;
     }
 
     if (this.browser) {
-      await this.browser.close();
+      try {
+        await this.browser.close();
+      } catch {
+        // Browser may already be closed.
+      }
       this.browser = null;
     }
 

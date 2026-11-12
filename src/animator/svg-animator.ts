@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { getEasing, interpolate, interpolateColor } from './easing';
 import { getKeyframePair, normalizeKeyframes } from './keyframe';
+import { morphPath } from './path-morph';
 
 /**
  * Interpolated state for a single element
@@ -21,6 +22,8 @@ export interface ElementState {
   selector: string;
   properties: InterpolatedProperties;
 }
+
+type PropertyValue = string | number | TransformValue | undefined;
 
 /**
  * Main animator class
@@ -120,6 +123,21 @@ export class SVGAnimator {
         continue;
       }
 
+      if (key === 'd') {
+        const isFirst = start === keyframes[0];
+        const startPath = this.resolvePath(startValue, isFirst);
+        const endPath = this.resolvePath(endValue, false);
+
+        if (startPath && endPath) {
+          result.d = morphPath(startPath, endPath, easedProgress);
+        } else if (endPath) {
+          result.d = endPath;
+        } else if (startPath) {
+          result.d = startPath;
+        }
+        continue;
+      }
+
       if (startValue === undefined) {
         result[key] = this.serializeValue(endValue);
         continue;
@@ -133,7 +151,36 @@ export class SVGAnimator {
       result[key] = this.interpolateValue(key, startValue, endValue, easedProgress);
     }
 
+    // A property may only exist on the destination keyframe (e.g. an object
+    // added mid-animation). Keep it visible instead of dropping it.
+    for (const key of Object.keys(end.properties)) {
+      if (result[key] !== undefined) continue;
+      const value = end.properties[key];
+      if (value !== undefined) {
+        result[key] = key === 'd'
+          ? this.resolvePath(value, false)
+          : this.serializeValue(value);
+      }
+    }
+
     return result;
+  }
+
+  /**
+   * Resolve a keyframe's path value.
+   *
+   * `d: { start, end }` is a morph descriptor. The first keyframe uses its
+   * `start` state; later keyframes use their `end` state so that successive
+   * descriptors chain naturally (`circle->star`, then `star->circle`).
+   */
+  private resolvePath(value: unknown, isFirst: boolean): string | undefined {
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object' && 'start' in value && 'end' in value) {
+      const morph = value as PathMorphValue;
+      if (isFirst && morph.start !== morph.end) return morph.start;
+      return morph.end ?? morph.start;
+    }
+    return undefined;
   }
 
   /**
@@ -144,20 +191,13 @@ export class SVGAnimator {
     start: unknown,
     end: unknown,
     progress: number
-  ): string | number | undefined {
-    // Handle transform specially
+  ): PropertyValue {
+    // Handle transform specially. Returning a structured value lets the
+    // browser resolve the element's bounding-box center for rotation/scale.
     if (key === 'transform') {
       return this.interpolateTransform(
         start as TransformValue,
         end as TransformValue,
-        progress
-      );
-    }
-
-    // Handle path morphing
-    if (key === 'd' && typeof start === 'object' && typeof end === 'object') {
-      return this.interpolatePath(
-        { start: (start as PathMorphValue).start, end: (end as PathMorphValue).end },
         progress
       );
     }
@@ -185,11 +225,6 @@ export class SVGAnimator {
       return interpolate(start, end, progress);
     }
 
-    // Handle stroke-dasharray as number
-    if ((key === 'strokeDashoffset' || key === 'strokeDasharray') && typeof start === 'number') {
-      return interpolate(start as number, end as number, progress);
-    }
-
     // Handle strings that look like numbers
     if (typeof start === 'string' && typeof end === 'string') {
       const startNum = parseFloat(start);
@@ -204,269 +239,78 @@ export class SVGAnimator {
   }
 
   /**
-   * Interpolate transform values
+   * Interpolate transform values.
+   *
+   * Rotation and uniform scale are expressed without an origin; the renderer
+   * expands them around each element's bounding-box center. Explicit
+   * `[angle, cx, cy]` rotations stay untouched for deliberate pivots.
    */
   private interpolateTransform(
     start: TransformValue | undefined,
     end: TransformValue | undefined,
     progress: number
-  ): string {
-    const defaultTransform: TransformValue = {};
+  ): TransformValue {
+    const s = start || {};
+    const e = end || {};
+    const result: TransformValue = {};
 
-    const s = start || defaultTransform;
-    const e = end || defaultTransform;
-
-    const parts: string[] = [];
-
-    // Translate
+    // Translate: hold the defined value when only one side supplies it.
     if (s.translate || e.translate) {
-      const sx = s.translate?.[0] ?? 0;
-      const sy = s.translate?.[1] ?? 0;
-      const ex = e.translate?.[0] ?? 0;
-      const ey = e.translate?.[1] ?? 0;
-      const x = interpolate(sx, ex, progress);
-      const y = interpolate(sy, ey, progress);
-      parts.push(`translate(${x}, ${y})`);
+      const from = s.translate ?? e.translate ?? [0, 0];
+      const to = e.translate ?? from;
+      result.translate = [
+        interpolate(from[0], to[0], progress),
+        interpolate(from[1], to[1], progress),
+      ];
     }
 
     // Rotate
     if (s.rotate !== undefined || e.rotate !== undefined) {
-      if (typeof s.rotate === 'number' && typeof e.rotate === 'number') {
-        const angle = interpolate(s.rotate, e.rotate, progress);
-        parts.push(`rotate(${angle})`);
-      } else if (Array.isArray(s.rotate) && Array.isArray(e.rotate)) {
-        const angle = interpolate(s.rotate[0], e.rotate[0], progress);
-        const cx = interpolate(s.rotate[1], e.rotate[1], progress);
-        const cy = interpolate(s.rotate[2], e.rotate[2], progress);
-        parts.push(`rotate(${angle}, ${cx}, ${cy})`);
+      const from = s.rotate ?? e.rotate;
+      const to = e.rotate ?? from;
+      if (typeof from === 'number' && typeof to === 'number') {
+        result.rotate = interpolate(from, to, progress);
+      } else if (Array.isArray(from) && Array.isArray(to)) {
+        result.rotate = [
+          interpolate(from[0], to[0], progress),
+          interpolate(from[1] ?? 0, to[1] ?? 0, progress),
+          interpolate(from[2] ?? 0, to[2] ?? 0, progress),
+        ];
       } else {
-        const angle = s.rotate ?? e.rotate;
-        if (typeof angle === 'number') {
-          parts.push(`rotate(${angle})`);
-        }
+        result.rotate = to;
       }
     }
 
     // Scale
     if (s.scale !== undefined || e.scale !== undefined) {
-      if (typeof s.scale === 'number' && typeof e.scale === 'number') {
-        const scale = interpolate(s.scale, e.scale, progress);
-        parts.push(`scale(${scale})`);
-      } else if (typeof s.scale === 'object' && typeof e.scale === 'object') {
-        const sx = s.scale?.[0] ?? 1;
-        const sy = s.scale?.[1] ?? sx;
-        const ex = e.scale?.[0] ?? 1;
-        const ey = e.scale?.[1] ?? ex;
-        parts.push(`scale(${interpolate(sx, ex, progress)}, ${interpolate(sy, ey, progress)})`);
+      const from = s.scale ?? e.scale;
+      const to = e.scale ?? from;
+      if (typeof from === 'number' && typeof to === 'number') {
+        result.scale = interpolate(from, to, progress);
+      } else if (Array.isArray(from) && Array.isArray(to)) {
+        result.scale = [
+          interpolate(from[0], to[0], progress),
+          interpolate(from[1] ?? from[0], to[1] ?? to[0], progress),
+        ];
+      } else if (Array.isArray(to)) {
+        result.scale = to;
       } else {
-        const scale = (s.scale ?? e.scale) as number | [number, number];
-        if (typeof scale === 'number') {
-          parts.push(`scale(${scale})`);
-        }
+        result.scale = to;
       }
     }
 
-    // Skew
     if (s.skewX !== undefined || e.skewX !== undefined) {
-      const skew = interpolate(s.skewX ?? 0, e.skewX ?? 0, progress);
-      parts.push(`skewX(${skew})`);
+      result.skewX = interpolate(s.skewX ?? e.skewX ?? 0, e.skewX ?? s.skewX ?? 0, progress);
     }
-
     if (s.skewY !== undefined || e.skewY !== undefined) {
-      const skew = interpolate(s.skewY ?? 0, e.skewY ?? 0, progress);
-      parts.push(`skewY(${skew})`);
-    }
-
-    return parts.join(' ');
-  }
-
-  /**
-   * Interpolate SVG path using morphPaths algorithm
-   */
-  private interpolatePath(
-    morph: PathMorphValue,
-    progress: number
-  ): string {
-    // Simple linear interpolation between path strings
-    // For production, use a proper path morphing library like flubber
-    const startPoints = this.extractPathPoints(morph.start);
-    const endPoints = this.extractPathPoints(morph.end);
-
-    // Normalize point counts
-    const maxPoints = Math.max(startPoints.length, endPoints.length);
-    const normalizedStart = this.normalizePathPoints(startPoints, maxPoints);
-    const normalizedEnd = this.normalizePathPoints(endPoints, maxPoints);
-
-    // Interpolate each point
-    const interpolated = normalizedStart.map((sp, i) => {
-      const ep = normalizedEnd[i];
-      return {
-        x: interpolate(sp.x, ep.x, progress),
-        y: interpolate(sp.y, ep.y, progress),
-        cmd: progress < 0.5 ? sp.cmd : ep.cmd,
-      };
-    });
-
-    return this.pointsToPath(interpolated);
-  }
-
-  /**
-   * Extract points from SVG path d attribute
-   */
-  private extractPathPoints(d: string): { x: number; y: number; cmd: string }[] {
-    const points: { x: number; y: number; cmd: string }[] = [];
-    const commands = d.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g) || [];
-
-    let currentX = 0;
-    let currentY = 0;
-
-    for (const cmd of commands) {
-      const type = cmd[0];
-      const args = cmd
-        .slice(1)
-        .trim()
-        .split(/[\s,]+/)
-        .map(parseFloat)
-        .filter((n) => !isNaN(n));
-
-      switch (type) {
-        case 'M':
-          currentX = args[0];
-          currentY = args[1];
-          points.push({ x: currentX, y: currentY, cmd: 'M' });
-          break;
-        case 'm':
-          currentX += args[0];
-          currentY += args[1];
-          points.push({ x: currentX, y: currentY, cmd: 'M' });
-          break;
-        case 'L':
-          currentX = args[0];
-          currentY = args[1];
-          points.push({ x: currentX, y: currentY, cmd: 'L' });
-          break;
-        case 'l':
-          currentX += args[0];
-          currentY += args[1];
-          points.push({ x: currentX, y: currentY, cmd: 'L' });
-          break;
-        case 'H':
-          currentX = args[0];
-          points.push({ x: currentX, y: currentY, cmd: 'L' });
-          break;
-        case 'h':
-          currentX += args[0];
-          points.push({ x: currentX, y: currentY, cmd: 'L' });
-          break;
-        case 'V':
-          currentY = args[0];
-          points.push({ x: currentX, y: currentY, cmd: 'L' });
-          break;
-        case 'v':
-          currentY += args[0];
-          points.push({ x: currentX, y: currentY, cmd: 'L' });
-          break;
-        case 'C':
-          // Cubic bezier - store control points and end point
-          points.push({ x: args[0], y: args[1], cmd: 'C' });
-          points.push({ x: args[2], y: args[3], cmd: 'C' });
-          currentX = args[4];
-          currentY = args[5];
-          points.push({ x: currentX, y: currentY, cmd: 'C' });
-          break;
-        case 'c':
-          points.push({ x: currentX + args[0], y: currentY + args[1], cmd: 'C' });
-          points.push({ x: currentX + args[2], y: currentY + args[3], cmd: 'C' });
-          currentX += args[4];
-          currentY += args[5];
-          points.push({ x: currentX, y: currentY, cmd: 'C' });
-          break;
-        case 'Q':
-          points.push({ x: args[0], y: args[1], cmd: 'Q' });
-          currentX = args[2];
-          currentY = args[3];
-          points.push({ x: currentX, y: currentY, cmd: 'Q' });
-          break;
-        case 'q':
-          points.push({ x: currentX + args[0], y: currentY + args[1], cmd: 'Q' });
-          currentX += args[2];
-          currentY += args[3];
-          points.push({ x: currentX, y: currentY, cmd: 'Q' });
-          break;
-        case 'Z':
-        case 'z':
-          points.push({ x: currentX, y: currentY, cmd: 'Z' });
-          break;
-        default:
-          // Handle implicit L commands after M
-          if (args.length >= 2) {
-            currentX = args[0];
-            currentY = args[1];
-            points.push({ x: currentX, y: currentY, cmd: 'L' });
-          }
-      }
-    }
-
-    return points;
-  }
-
-  /**
-   * Normalize path points to same count
-   */
-  private normalizePathPoints(
-    points: { x: number; y: number; cmd: string }[],
-    targetCount: number
-  ): { x: number; y: number; cmd: string }[] {
-    if (points.length === targetCount) return points;
-
-    if (points.length < targetCount) {
-      // Need to add points - interpolate
-      const result = [...points];
-      const step = (points.length - 1) / (targetCount - 1 || 1);
-
-      for (let i = points.length; i < targetCount; i++) {
-        const index = Math.floor(step * (i - points.length + 1));
-        const t = (step * (i - points.length + 1)) % 1;
-        const p1 = points[Math.min(index, points.length - 1)];
-        const p2 = points[Math.min(index + 1, points.length - 1)];
-        result.push({
-          x: interpolate(p1.x, p2.x, t),
-          y: interpolate(p1.y, p2.y, t),
-          cmd: p1.cmd,
-        });
-      }
-
-      return result;
-    }
-
-    // Need to reduce points - sample
-    const result: { x: number; y: number; cmd: string }[] = [];
-    const step = (points.length - 1) / (targetCount - 1 || 1);
-
-    for (let i = 0; i < targetCount; i++) {
-      const index = Math.min(Math.floor(step * i), points.length - 1);
-      result.push(points[index]);
+      result.skewY = interpolate(s.skewY ?? e.skewY ?? 0, e.skewY ?? s.skewY ?? 0, progress);
     }
 
     return result;
   }
 
   /**
-   * Convert points back to path string
-   */
-  private pointsToPath(points: { x: number; y: number; cmd: string }[]): string {
-    return points
-      .map((p, i) => {
-        if (p.cmd === 'Z') return 'Z';
-        if (p.cmd === 'M') return `M ${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
-        return `${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
-      })
-      .join(' ')
-      .replace(/^(\d)/, 'M $1');
-  }
-
-  /**
-   * Serialize properties to CSS/SVG attribute format
+   * Serialize properties for a keyframe with no following keyframe.
    */
   private serializeProperties(props: AnimatableProperties): InterpolatedProperties {
     const result: InterpolatedProperties = {};
@@ -481,7 +325,7 @@ export class SVGAnimator {
   /**
    * Serialize a single value
    */
-  private serializeValue(value: unknown): string | number | undefined {
+  private serializeValue(value: unknown): PropertyValue {
     if (value === undefined || value === null) return undefined;
     if (typeof value === 'number') return value;
     if (typeof value === 'string') return value;
@@ -493,35 +337,18 @@ export class SVGAnimator {
       if ('start' in value && 'end' in value) {
         return (value as PathMorphValue).start;
       }
+      if ('translate' in value || 'rotate' in value || 'scale' in value || 'skewX' in value || 'skewY' in value) {
+        return value as TransformValue;
+      }
     }
     return String(value);
   }
 
   /**
-   * Generate JavaScript code to apply animation state to SVG
+   * Generate JavaScript code to apply animation state to SVG.
    */
   generateApplyScript(states: ElementState[]): string {
-    const stateJson = JSON.stringify(
-      states.map((s) => ({ selector: s.selector, properties: s.properties }))
-    );
-
-    return `
-      (function() {
-        const states = ${stateJson};
-        states.forEach(function(state) {
-          var elements = document.querySelectorAll(state.selector);
-          elements.forEach(function(el) {
-            Object.entries(state.properties).forEach(function(entry) {
-              var key = entry[0];
-              var value = entry[1];
-              if (value !== undefined && value !== null) {
-                el.setAttribute(key, value);
-              }
-            });
-          });
-        });
-      })();
-    `;
+    return this.buildApplyScript(states, false);
   }
 
   /**
@@ -539,22 +366,29 @@ export class SVGAnimator {
   }
 
   /**
-   * Generate script to cache animated DOM element references (run once)
+   * Generate script to cache animated DOM element references (run once).
+   * Also records the element's authored transform so animated transforms
+   * compose with it instead of replacing it.
    */
   generateInitCacheScript(): string {
-    const selectors = this.getAnimatedSelectors();
-    const selectorsJson = JSON.stringify(selectors);
+    const selectors = JSON.stringify(this.getAnimatedSelectors());
 
     return `
       (function() {
-        var selectors = ${selectorsJson};
-        window.__animCache = {};
+        window.__animCache = window.__animCache || {};
+        var selectors = ${selectors};
         selectors.forEach(function(sel) {
-          var els = document.querySelectorAll(sel);
-          if (els.length === 1) {
-            window.__animCache[sel] = els[0];
-          } else if (els.length > 1) {
-            window.__animCache[sel] = Array.from(els);
+          try {
+            var els = document.querySelectorAll(sel);
+            var value = els.length === 1 ? els[0] : Array.prototype.slice.call(els);
+            window.__animCache[sel] = value;
+            Array.prototype.forEach.call(els, function(el) {
+              if (el.__svgAnimBaseTransform === undefined) {
+                el.__svgAnimBaseTransform = el.getAttribute('transform') || '';
+              }
+            });
+          } catch (error) {
+            window.__animCache[sel] = [];
           }
         });
       })();
@@ -563,9 +397,19 @@ export class SVGAnimator {
 
   /**
    * Generate optimized per-frame script using cached element references.
-   * Falls back to querySelectorAll for new elements not yet cached.
    */
   generateOptimizedApplyScript(states: ElementState[]): string {
+    return this.buildApplyScript(states, true);
+  }
+
+  /**
+   * Shared per-frame applier.
+   *
+   * Presentation properties are written to inline CSS (class rules otherwise
+   * override SVG presentation attributes), attribute-only values use the SVG
+   * attribute name, and transforms compose with the authored `transform`.
+   */
+  private buildApplyScript(states: ElementState[], useCache: boolean): string {
     const stateJson = JSON.stringify(
       states.map((s) => ({ selector: s.selector, properties: s.properties }))
     );
@@ -574,26 +418,117 @@ export class SVGAnimator {
       (function() {
         var cache = window.__animCache || {};
         var states = ${stateJson};
-        states.forEach(function(state) {
-          var cached = cache[state.selector];
-          var elements;
-          if (cached) {
-            elements = Array.isArray(cached) ? cached : [cached];
-          } else {
-            elements = Array.from(document.querySelectorAll(state.selector));
-            cache[state.selector] = elements.length === 1 ? elements[0] : elements;
+        var GEOMETRY = {
+          d: 1, transform: 1, x: 1, y: 1, x1: 1, y1: 1, x2: 1, y2: 1,
+          width: 1, height: 1, r: 1, rx: 1, ry: 1, cx: 1, cy: 1,
+          points: 1, offset: 1, viewBox: 1, pathLength: 1, href: 1
+        };
+        var LENGTHS = { 'stroke-width': 1, 'stroke-dashoffset': 1, 'font-size': 1, 'letter-spacing': 1 };
+
+        function cssName(key) {
+          return key.replace(/[A-Z]/g, function(m) { return '-' + m.toLowerCase(); });
+        }
+
+        function formatValue(key, value) {
+          if (typeof value === 'number' && LENGTHS[key]) {
+            return value + 'px';
           }
-          elements.forEach(function(el) {
-            if (!el) return;
-            var entries = Object.entries(state.properties);
-            for (var i = 0; i < entries.length; i++) {
-              var key = entries[i][0];
-              var value = entries[i][1];
-              if (value !== undefined && value !== null) {
-                el.setAttribute(key, String(value));
-              }
+          return String(value);
+        }
+
+        function buildTransform(el, t) {
+          var parts = [];
+          if (t.translate) {
+            parts.push('translate(' + t.translate[0] + ',' + t.translate[1] + ')');
+          }
+
+          var bbox = null;
+          var needsCenter = (t.rotate !== undefined && !Array.isArray(t.rotate)) || t.scale !== undefined;
+          if (needsCenter) {
+            try { bbox = el.getBBox(); } catch (error) { bbox = null; }
+          }
+          var cx = bbox ? bbox.x + bbox.width / 2 : 0;
+          var cy = bbox ? bbox.y + bbox.height / 2 : 0;
+
+          if (t.rotate !== undefined) {
+            if (Array.isArray(t.rotate)) {
+              parts.push('rotate(' + t.rotate[0] + ',' + t.rotate[1] + ',' + t.rotate[2] + ')');
+            } else {
+              parts.push('rotate(' + t.rotate + ',' + cx + ',' + cy + ')');
             }
-          });
+          }
+
+          if (t.scale !== undefined) {
+            if (Array.isArray(t.scale)) {
+              parts.push('translate(' + cx + ',' + cy + ') scale(' + t.scale[0] + ',' + t.scale[1] + ') translate(' + (-cx) + ',' + (-cy) + ')');
+            } else {
+              parts.push('translate(' + cx + ',' + cy + ') scale(' + t.scale + ') translate(' + (-cx) + ',' + (-cy) + ')');
+            }
+          }
+
+          if (t.skewX !== undefined) parts.push('skewX(' + t.skewX + ')');
+          if (t.skewY !== undefined) parts.push('skewY(' + t.skewY + ')');
+
+          return parts.join(' ');
+        }
+
+        function applyProps(el, props) {
+          for (var key in props) {
+            if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+            var value = props[key];
+            if (value === undefined || value === null) continue;
+
+            if (key === 'transform') {
+              if (el.__svgAnimBaseTransform === undefined) {
+                el.__svgAnimBaseTransform = el.getAttribute('transform') || '';
+              }
+              var base = el.__svgAnimBaseTransform;
+              var transform = buildTransform(el, value);
+              el.setAttribute('transform', base ? (base + ' ' + transform) : transform);
+              continue;
+            }
+
+            if (key === 'd') {
+              if (typeof value === 'string') el.setAttribute('d', value);
+              continue;
+            }
+
+            var name = cssName(key);
+            if (GEOMETRY[key]) {
+              el.setAttribute(key, String(value));
+            } else {
+              el.style.setProperty(name, formatValue(name, value));
+            }
+          }
+        }
+
+        states.forEach(function(state) {
+          var elements;
+          if (${useCache ? 'true' : 'false'}) {
+            var cached = cache[state.selector];
+            if (cached) {
+              elements = Array.isArray(cached) ? cached : [cached];
+            }
+          }
+          if (!elements || elements.length === 0) {
+            try {
+              elements = Array.prototype.slice.call(document.querySelectorAll(state.selector));
+            } catch (error) {
+              elements = [];
+            }
+            if (${useCache ? 'true' : 'false'}) {
+              cache[state.selector] = elements.length === 1 ? elements[0] : elements;
+            }
+          }
+
+          for (var i = 0; i < elements.length; i++) {
+            var el = elements[i];
+            if (!el) continue;
+            if (el.__svgAnimBaseTransform === undefined) {
+              el.__svgAnimBaseTransform = el.getAttribute('transform') || '';
+            }
+            applyProps(el, state.properties);
+          }
         });
       })();
     `;

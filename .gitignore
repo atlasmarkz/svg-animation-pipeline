@@ -3,3 +3,6 @@ dist/
 .svg-anim-temp/
 *.log
 .DS_Store
+.npm-cache/
+*.tgz
+.dsh-home-test/

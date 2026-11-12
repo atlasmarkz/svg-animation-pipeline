@@ -5,7 +5,11 @@
 import { RenderOptions, BrowserConfig } from '../types';
 
 /**
- * Default render options
+ * Default render options.
+ *
+ * `pixelRatio` is the single source of truth for output supersampling. The old
+ * `quality` preset used to multiply the canvas by 2x/3x behind the user's back,
+ * which silently turned a 1600x1050 design into a 4800x3150 capture.
  */
 export const DEFAULT_RENDER_OPTIONS: Required<RenderOptions> = {
   width: 800,
@@ -13,6 +17,7 @@ export const DEFAULT_RENDER_OPTIONS: Required<RenderOptions> = {
   background: '#ffffff',
   quality: 'medium',
   deviceScaleFactor: undefined as unknown as number,
+  pixelRatio: 1,
 };
 
 /**
@@ -28,12 +33,19 @@ export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
     '--no-first-run',
     '--no-zygote',
     '--disable-gpu',
+    '--force-color-profile=srgb',
+    '--font-render-hinting=none',
+    '--hide-scrollbars',
   ],
   timeout: 30000,
 };
 
 /**
- * Quality presets for rendering
+ * Quality presets for rendering.
+ *
+ * The deviceScaleFactor values are kept for backwards compatibility, but the
+ * renderer no longer applies them implicitly: output resolution is controlled
+ * by `pixelRatio` and defaults to 1:1 with width x height.
  */
 export const QUALITY_PRESETS: Record<
   NonNullable<RenderOptions['quality']>,

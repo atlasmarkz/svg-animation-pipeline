@@ -137,8 +137,17 @@ export interface PipelineConfig {
   width: number;
   height: number;
   background?: string;
+  /** Encoding quality for MP4/WebM. Does not change output resolution. */
   quality?: 'low' | 'medium' | 'high';
   preserveNativeAnimations?: boolean;
+  /**
+   * Supersampling factor for frame capture. Defaults to 1 so that the output
+   * resolution always matches `width` × `height` (quality does not silently
+   * multiply the canvas). Use 2 for extra-crisp source frames.
+   */
+  pixelRatio?: number;
+  /** Chrome/Chromium binary used for frame capture. Falls back to PUPPETEER_EXECUTABLE_PATH. */
+  executablePath?: string;
 }
 
 export interface PipelineOptions extends PipelineConfig {
@@ -192,6 +201,7 @@ export interface RenderOptions {
   background?: string;
   quality?: 'low' | 'medium' | 'high';
   deviceScaleFactor?: number;
+  pixelRatio?: number;
 }
 
 export interface BrowserConfig {
@@ -236,5 +246,5 @@ export interface AnimationState {
 }
 
 export interface InterpolatedProperties {
-  [key: string]: string | number | undefined;
+  [key: string]: string | number | TransformValue | undefined;
 }

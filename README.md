@@ -2,15 +2,42 @@
 
 端到端 SVG 动画流水线：**自然语言描述 → LLM 生成 SVG → 程序化动画 → 按帧渲染 → FFmpeg 合成**
 
-![Agent Loop](./output/agent-loop.gif)
+同一份 SVG 每次渲染得到相同帧，原生 CSS/SMIL 动画会被精确 seek 到帧时间，因此可以稳定输出**循环无缝、可复现**的 GIF/MP4/WebM。
+
+<p align="center">
+  <img src="./output/agent-loop.gif" width="960" alt="The Agent Loop — 8 秒无缝循环的 SVG 动画" />
+</p>
+<p align="center">
+  <sub>1280×800 · 25 FPS · 8s seamless loop · 200 frames · <a href="./output/agent-loop.mp4">MP4 版（569 KB）</a> · <a href="./examples/agent-loop.ts">源码</a></sub>
+</p>
+
+## 效果对比
+
+![改造前后对比](./docs/before-after.png)
+
+左边是旧版渲染：`quality: 'high'` 把画布放大到 4800×3150，GIF 达到 21.7 MB；更关键的是，CSS `transform` 覆盖了图标自身的 `transform` 属性，左上角出现漂移色块，9–12px 的文字缩到 README 宽度后不可读。
+
+右边是改造后的 1280×800 / 25fps / 8s 无缝循环版本。主要变化：
+
+- 动画时间轴改为**逐帧 seek**：CSS `document.getAnimations()` 与 SVG SMIL 都暂停后设置到 `frame / fps`，不再依赖真实墙钟
+- `transform` 与元素原有 `transform` **组合**，`scale`/`rotate` 未指定中心时自动绕 bbox 中心
+- presentation 属性以 **kebab-case 内联样式**写入，`stroke-dashoffset` 等动画不再被 class CSS 覆盖
+- 路径形变支持完整 SVG path 指令（含圆弧），按等弧长采样并对齐起点/方向
+- `width`/`height` 就是最终尺寸，`quality` 不再偷偷放大画布
+- GIF 使用全序列调色板 + `stats_mode=diff` + `sierra2_4a`，并显式 `-loop 0`
 
 ## 核心特性
 
 - **LLM 智能生成**：支持 OpenAI/Anthropic API，自然语言描述自动生成 SVG 动画
-- **SVG 分层解析**：提取图层结构，校验兼容性
-- **程序化动画**：关键帧引擎，24 种缓动函数，变换/颜色/路径插值
-- **按帧渲染**：Puppeteer 无头浏览器逐帧渲染，DOM 元素缓存优化
-- **FFmpeg 合成**：输出 GIF（调色板优化）、MP4 或 WebM
+- **确定性逐帧渲染**：CSS 动画与 SMIL 统一暂停并 seek 到帧时间，同一输入重复渲染结果一致
+- **原生动画保留**：`preserveNativeAnimations: true` 时保留 `@keyframes`、SMIL 动画，并逐帧同步两条时间轴
+- **正确属性通道**：presentation 属性走 kebab-case 内联样式，避免被 class CSS 覆盖；变换会与作者 transform 组合
+- **自动变换中心**：`scale` / `rotate` 未指定中心时绕元素 bbox 中心，不再绕 SVG 原点跳动
+- **路径形变**：解析 M/L/H/V/C/S/Q/T/A/Z，等弧长采样、起点与方向对齐，circle ↔ star 不再产生乱线
+- **程序化动画**：关键帧引擎，24 种缓动函数，变换/颜色/路径/数值插值
+- **分辨率可控**：`width`/`height` 为最终尺寸，`pixelRatio` 单独控制超采样；`quality` 只影响视频编码
+- **更干净的 GIF**：全序列 palette、`stats_mode=diff`、`sierra2_4a`、`-loop 0`
+- **工程化细节**：唯一临时目录、`finally` 自动清理、帧序列校验、输出目录自动创建
 - **前端界面**：React + Vite 可视化编辑器，实时预览
 
 ## 快速开始
@@ -32,7 +59,13 @@ cd frontend && npm install && cd ..
 
 - Node.js 18+
 - FFmpeg（通过 `@ffmpeg-installer/ffmpeg` 自动安装）
-- OpenAI 或 Anthropic API Key
+- OpenAI 或 Anthropic API Key（仅 LLM 生成模式需要）
+
+如果 Puppeteer 无法下载 Chrome，可直接复用系统 Chrome：
+
+```bash
+export PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+```
 
 ### 启动
 
@@ -121,6 +154,36 @@ console.log('SVG:', result.svg);
 console.log('Animations:', result.animations);
 ```
 
+## DeepSeek Harness 插件
+
+本仓库同时是一个可安装的 **DSH 插件**。它把渲染流水线注册为 `svg_motion_render` 工具，让 DSH 里的 Agent 直接生成 GIF / MP4 / WebM，而不是只输出一段 SVG 代码。
+
+### 安装
+
+```bash
+dsh plugin --profile web add https://github.com/atlasmarkz/svg-animation-pipeline/releases/latest/download/svg-animation-pipeline-1.1.0.tgz
+```
+
+安装后重启 DSH。插件是 host-only 的，不修改 Web UI；工具会出现在 Agent 的工具列表中。
+
+### 工具调用
+
+```json
+{
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1280\" height=\"800\">...</svg>",
+  "output": "output/agent-loop.gif",
+  "fps": 25,
+  "duration": 8000,
+  "preserveNativeAnimations": true,
+  "quality": "high",
+  "pixelRatio": 1
+}
+```
+
+也可以传 `input: "assets/loop.svg"` 读取文件，或用 `animations` 传入关键帧数组。`output` 支持 `.gif`、`.mp4`、`.webm`；相对路径按工作目录解析。Chrome 会优先使用 `chromePath` / `PUPPETEER_EXECUTABLE_PATH` / 系统安装的 Chrome，FFmpeg 使用项目自带的静态二进制。
+
+工具返回输出路径、尺寸、帧数、耗时和文件大小；渲染过程仍然使用逐帧 seek 和确定性帧序列，所以同一个 SVG 每次得到相同结果。
+
 ## 支持的样式
 
 | 样式 | 描述 | 适用场景 |
@@ -156,8 +219,12 @@ new SVGAnimationPipeline(config: PipelineConfig, events?: PipelineEvents)
 | `width` | `number` | 800 | 渲染宽度（像素） |
 | `height` | `number` | 600 | 渲染高度（像素） |
 | `background` | `string` | '#ffffff' | 背景颜色 |
-| `quality` | `'low' \| 'medium' \| 'high'` | `'medium'` | 渲染质量 |
-| `preserveNativeAnimations` | `boolean` | false | 保留 CSS/SMIL 动画 |
+| `quality` | `'low' \| 'medium' \| 'high'` | `'medium'` | MP4/WebM 编码质量；不改变分辨率 |
+| `pixelRatio` | `number` | 1 | 帧捕获超采样倍率；`2` 会输出 2× 尺寸的帧 |
+| `preserveNativeAnimations` | `boolean` | false | 保留并逐帧 seek CSS/SMIL 动画 |
+| `tempDir` | `string` | 系统临时目录 | 自定义帧文件目录 |
+| `keepFrames` | `boolean` | false | 保留 PNG 帧，便于调试或二次编码 |
+| `executablePath` | `string` | 自动检测 | Chrome/Chromium 可执行文件；也可用 `PUPPETEER_EXECUTABLE_PATH` |
 
 #### 方法
 
@@ -168,11 +235,24 @@ new SVGAnimationPipeline(config: PipelineConfig, events?: PipelineEvents)
 - `render()` - 执行渲染流水线
 - `getLayers()` - 获取 SVG 图层
 - `getParsedSVG()` - 获取 SVG 元数据
+- `getTempDir()` - 获取本次渲染的帧目录
 - `close()` - 关闭浏览器资源
 
 #### 静态方法
 
 - `SVGAnimationPipeline.fromDescription(request)` - LLM 自动生成并渲染
+
+### 分辨率、质量与循环
+
+- `width` / `height` 决定最终帧尺寸。`pixelRatio: 2` 会输出 2× 帧（例如 800×600 → 1600×1200），适合高 DPI 素材或后续缩放；它不会改变布局。
+- `quality` 只映射到视频编码质量：MP4 CRF 18/21/25，WebM CRF 30/33/37（high/medium/low）。GIF 固定使用 256 色全局调色板。
+- 要得到无缝 GIF，让所有 CSS/SMIL 周期整除 `duration`，并让第一帧与最后一帧状态一致。渲染器会把原生时间轴 seek 到每帧时间，而不是按实际耗时采样，所以机器快慢不会改变动画相位。
+
+#### 与旧版的行为差异
+
+- `quality` 不再放大画布。旧版 `high` 会得到 3× 尺寸；现在请用 `pixelRatio` 显式控制超采样。
+- `preserveNativeAnimations` 默认改为 `false`。需要保留 CSS/SMIL 动画时请显式开启。
+- 临时帧默认写入系统临时目录，并在 `render()` 结束后清理；需要保留时设 `keepFrames: true`。
 
 ### AnimationConfig
 
@@ -210,7 +290,7 @@ new SVGAnimationPipeline(config: PipelineConfig, events?: PipelineEvents)
 
 - `opacity` - 透明度 (0-1)
 - `strokeDashoffset` / `strokeDasharray` - 描边动画
-- `transform` - 变换 (translate, rotate, scale, skew)
+- `transform` - 变换 (translate, rotate, scale, skew)；未指定中心时 `scale`/`rotate` 自动绕 bbox 中心
 - `d` - 路径形变 `{ start, end }`
 - `fill` / `stroke` - 颜色（自动插值）
 - `strokeWidth`, `fillOpacity`, `strokeOpacity`
@@ -295,8 +375,11 @@ curl -X POST http://localhost:3001/api/diagram/preview \
 ## 运行示例
 
 ```bash
-# Agent Loop 架构图
+# Agent Loop：8 秒无缝循环（GIF）
 npx ts-node examples/agent-loop.ts
+
+# 同一份素材输出 MP4
+npx ts-node examples/agent-loop.ts mp4
 
 # 分层视差场景
 npx ts-node examples/layered-scene.ts
@@ -307,6 +390,8 @@ npx ts-node examples/basic-path.ts
 # 路径形变动画
 npx ts-node examples/morph-demo.ts
 ```
+
+`agent-loop.ts` 是“效果优先”的完整示例：1280×800 画布、25fps、8 秒周期，所有 CSS/SMIL 周期都整除 8 秒；输出约 8.4 MB GIF 或 569 KB MP4。
 
 ## 项目结构
 
@@ -324,6 +409,9 @@ svg-animation-pipeline/
 │   │   ├── prompts/              # 提示词模板
 │   │   └── providers/            # LLM 提供商
 │   ├── animator/                 # 动画引擎
+│   │   ├── svg-animator.ts       # 状态计算 / 属性应用
+│   │   ├── path-morph.ts         # 路径解析、等弧长采样、形变
+│   │   └── easing.ts             # 24 种缓动
 │   ├── renderer/                 # Puppeteer 渲染器
 │   ├── encoder/                  # FFmpeg 编码器
 │   ├── loader/                   # SVG 加载器
@@ -336,6 +424,7 @@ svg-animation-pipeline/
 │       ├── App.tsx               # 主应用
 │       └── components/           # React 组件
 ├── examples/                     # 示例文件
+├── docs/                         # 效果对比等文档图片
 └── output/                       # 输出目录
 ```
 
