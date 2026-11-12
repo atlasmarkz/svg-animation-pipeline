@@ -15,21 +15,6 @@
   <sub>1280×800 · 25 FPS · 8s seamless loop · 200 frames · <a href="./output/agent-loop.mp4">MP4 版（569 KB）</a> · <a href="./examples/agent-loop.ts">源码</a></sub>
 </p>
 
-## 效果对比
-
-![改造前后对比](./docs/before-after.png)
-
-左边是旧版渲染：`quality: 'high'` 把画布放大到 4800×3150，GIF 达到 21.7 MB；更关键的是，CSS `transform` 覆盖了图标自身的 `transform` 属性，左上角出现漂移色块，9–12px 的文字缩到 README 宽度后不可读。
-
-右边是改造后的 1280×800 / 25fps / 8s 无缝循环版本。主要变化：
-
-- 动画时间轴改为**逐帧 seek**：CSS `document.getAnimations()` 与 SVG SMIL 都暂停后设置到 `frame / fps`，不再依赖真实墙钟
-- `transform` 与元素原有 `transform` **组合**，`scale`/`rotate` 未指定中心时自动绕 bbox 中心
-- presentation 属性以 **kebab-case 内联样式**写入，`stroke-dashoffset` 等动画不再被 class CSS 覆盖
-- 路径形变支持完整 SVG path 指令（含圆弧），按等弧长采样并对齐起点/方向
-- `width`/`height` 就是最终尺寸，`quality` 不再偷偷放大画布
-- GIF 使用全序列调色板 + `stats_mode=diff` + `sierra2_4a`，并显式 `-loop 0`
-
 ## 核心特性
 
 - **LLM 智能生成**：支持 OpenAI/Anthropic API，自然语言描述自动生成 SVG 动画
@@ -480,7 +465,6 @@ svg-animation-pipeline/
 │   └── dist/                     # 插件构建产物
 ├── assets/                       # 插件 Logo（SVG + PNG）
 ├── cordis.patch.yml              # DSH 插件挂载声明
-├── docs/                         # 效果对比等文档图片
 └── output/                       # 输出目录
 ```
 

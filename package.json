@@ -54,7 +54,6 @@
     "plugin/package.json",
     "cordis.patch.yml",
     "assets",
-    "docs",
     "README.md",
     "LICENSE"
   ],
