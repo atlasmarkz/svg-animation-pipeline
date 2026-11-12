@@ -55,13 +55,13 @@ const parameters = {
   input: {
     type: 'string',
     description:
-      'Path to an .svg file. Provide exactly one of svg or input.',
+      'Path to an .svg file. Provide exactly one of svg or input. Relative paths resolve against the session working directory.',
   },
   output: {
     type: 'string',
     required: true,
     description:
-      'Output file path ending in .gif, .mp4 or .webm. Relative paths resolve against the working directory; parent directories are created.',
+      'Output file path ending in .gif, .mp4 or .webm. Relative paths resolve against the session working directory; parent directories are created.',
   },
   width: {
     type: 'number',
@@ -224,7 +224,8 @@ function resolveDimensions(
   return { width, height };
 }
 
-const renderTool = defineTool({
+function createRenderTool(ctx: PluginContext) {
+  return defineTool({
   name: 'svg_motion_render',
   description:
     'Render an SVG into a deterministic animated GIF, MP4 or WebM. Preserves CSS @keyframes and SMIL animations by seeking them to each frame, so output is reproducible and loops seamlessly. Accepts inline SVG or an .svg path, and an optional AnimationConfig array. Use for README hero loops, animated diagrams, explainers and social clips. Duration is in milliseconds; frames default to width × height from the SVG.',
@@ -263,22 +264,24 @@ const renderTool = defineTool({
   },
   timeoutMs: 10 * 60 * 1000,
   isConcurrencySafe: () => false,
-  async execute(args: RenderArgs, exec: { signal?: AbortSignal }): Promise<RenderValue> {
+  async execute(args: RenderArgs, exec: ToolRunContextLike): Promise<RenderValue> {
     if (exec?.signal?.aborted) throw new Error('svg_motion_render aborted before rendering');
     if (Boolean(args.svg) === Boolean(args.input)) {
       fail('svg / input: provide exactly one of inline svg or input file path');
     }
 
-    const output = path.resolve(args.output);
-    const format = resolveFormat(output);
+    const format = resolveFormat(args.output);
+    const outputTarget = await resolveSessionTarget(ctx, exec, args.output, 'output');
+    const output = outputTarget.path;
 
     let svgContent: string;
     if (args.svg) {
       svgContent = args.svg;
     } else {
-      const inputPath = path.resolve(args.input as string);
-      if (!isFile(inputPath)) fail(`input: file not found at ${inputPath}`);
-      svgContent = fs.readFileSync(inputPath, 'utf8');
+      const inputTarget = await resolveSessionTarget(ctx, exec, args.input as string, 'input');
+      const info = await ctx.fs.stat(inputTarget.target, exec.signal);
+      if (!info || info.type !== 'file') fail(`input: not a regular file at ${inputTarget.path}`);
+      svgContent = await ctx.fs.readText(inputTarget.target, exec.signal);
     }
 
     if (!/<svg[\s>]/i.test(svgContent)) {
@@ -362,17 +365,57 @@ const renderTool = defineTool({
     if (args.keepFrames) value.framesDir = pipeline.getTempDir();
     return value;
   },
-});
+  });
+}
 
 export const name = 'svg-motion';
-export const inject = ['tools'];
+export const inject = ['tools', 'fs', 'workingDirectory'];
+
+interface FsTargetLike {
+  displayPath: string;
+}
+
+interface ToolRunContextLike {
+  signal?: AbortSignal;
+  agent?: unknown;
+}
 
 interface PluginContext {
   tools: {
     register(definition: unknown): unknown;
   };
+  fs: {
+    resolve(
+      path: string,
+      opts?: { cwd?: string; signal?: AbortSignal }
+    ): Promise<FsTargetLike>;
+    processPath(target: FsTargetLike): string;
+    stat(target: FsTargetLike, signal?: AbortSignal): Promise<{ type: 'file' | 'directory' | 'other' } | undefined>;
+    readText(target: FsTargetLike, signal?: AbortSignal): Promise<string>;
+  };
+  workingDirectory: {
+    ensure(agent: unknown, signal?: AbortSignal): Promise<string>;
+  };
+}
+
+async function resolveSessionTarget(
+  ctx: PluginContext,
+  exec: ToolRunContextLike,
+  requested: string,
+  label: string
+): Promise<{ target: FsTargetLike; path: string }> {
+  const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal);
+  try {
+    const target = await ctx.fs.resolve(requested, {
+      ...(cwd === undefined ? {} : { cwd }),
+      signal: exec.signal,
+    });
+    return { target, path: ctx.fs.processPath(target) };
+  } catch (error) {
+    fail(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export function apply(ctx: PluginContext): void {
-  ctx.tools.register(renderTool);
+  ctx.tools.register(createRenderTool(ctx));
 }

@@ -1,6 +1,6 @@
 {
   "name": "svg-animation-pipeline",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "End-to-end SVG animation pipeline and DeepSeek Harness plugin: layered SVG → procedural animation → frame-accurate rendering → GIF/video encoding",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
